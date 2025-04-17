@@ -11,7 +11,7 @@ st.set_page_config(
 )
 
 # 타이틀 및 설명
-st.title("📂 Logger-PTAT Tool Menu")
+st.title("📂 ITS Tool Menu")
 st.markdown("### Select a tool to use:")
 
 # 메인 파이프라인 페이지 링크
