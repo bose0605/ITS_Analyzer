@@ -15,7 +15,7 @@ st.title("📂 ITS Tool Menu")
 st.markdown("### Select a tool to use:")
 
 # 메인 파이프라인 페이지 링크
-st.page_link("pages/logger_ptat_pipeline.py", label="📊 Logger-PTAT Analysis Pipeline")
+st.page_link("pages/sensor correlation.py", label="📊 Logger-PTAT Analysis Pipeline")
 
 # 트리 형식으로 하위 리소스 표시
 with st.expander("   └ 📂 Download Excel Template (for Logger-PTAT)"):
