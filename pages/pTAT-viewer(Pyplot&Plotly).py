@@ -23,6 +23,8 @@ def sanitize_key(text: str) -> str:
 def get_color_hex(cmap, index, total):
     rgba = cmap(index / max(total - 1, 1))
     return mcolors.to_hex(rgba, keep_alpha=False)
+with top_col_left:
+    st.title("📊 Logger-PTAT Analysis Pipeline")
 with top_col_right:
     st.page_link("main.py", label="🏠 To Main")
 
