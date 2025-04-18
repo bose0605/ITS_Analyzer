@@ -29,7 +29,8 @@ plt.rcParams["font.family"] = "Arial"
 st.set_page_config(layout="wide")
 if "colormap_name" not in st.session_state:
     st.session_state["colormap_name"] = "plasma"
-# 사이드바를 안보이게 하는 CSS############################3
+
+#Clear out side bar
 st.markdown("""
     <style>
     /* 사이드바 안의 네비게이션 메뉴 (main, sensor correlation 등) 숨김 */
@@ -39,7 +40,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-#####################################
 # 🌈 虹色ライン
 st.markdown("""
 <hr style="
@@ -81,14 +81,13 @@ section[data-testid="stSidebar"] label {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("\U0001F4CA Fornewcreation-pTAT Viewer(Pyplot&Plotly)")
-##########################################
+
 top_col_left, top_col_right = st.columns([8, 1])
 with top_col_left:
     st.title("\U0001F4CA Fornewcreation-pTAT Viewer(Pyplot&Plotly)")
 with top_col_right:
     st.page_link("main.py", label="🏠 To Main")
-############################################3
+
 # ===== ファイルアップロード =====
 with st.sidebar.expander("1️⃣ CSVファイルの選択", expanded=True):
     uploaded_file = st.file_uploader("CSVファイルをアップロード", type="csv", accept_multiple_files=False)
