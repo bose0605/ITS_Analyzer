@@ -14,7 +14,7 @@ st.set_page_config(
 st.markdown("""
     <style>
     a.st-emotion-cache-6c2g0o.ef3psqc11 {  
-        font-size: 20px !important;
+        font-size: 40px !important;
         font-weight: bold !important;
         color: #1f77b4 !important;  
     }
