@@ -27,6 +27,6 @@ with st.expander("   └ 📂 Download Excel Template (for Logger-PTAT)"):
         st.warning("❗ Template file not found.")
 
 # 다른 페이지 링크
-st.page_link("pTAT-viewer app(1).py", label="📈 pTAT Viewer")
+st.page_link("pages/pTAT-viewer app.py", label="📈 pTAT Viewer")
 
 
