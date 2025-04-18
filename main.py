@@ -45,6 +45,13 @@ st.markdown("""
 
 st.title("📂 ITS Tool Menu")
 
+# 도라에몽 회전 등장
+st.markdown("""
+<div class="doraemon-box">
+    <img class="doraemon-img" src="https://upload.wikimedia.org/wikipedia/ko/3/3e/Doraemon_character.png">
+</div>
+""", unsafe_allow_html=True)
+
     # sensor correlation 링크
 st.page_link("pages/sensor correlation.py", label="📊 sensor correlation")
 st.page_link("pages/pTAT-viewer app.py", label="📈 pTAT Viewer")
