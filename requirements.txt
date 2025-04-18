@@ -25,3 +25,4 @@ pip-review
 tqdm
 pymsteams
 chardet
+kaleido
