@@ -8,7 +8,9 @@ from datetime import datetime
 import matplotlib.ticker as ticker
 
 plt.rcParams["font.family"] = "Arial"
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide",
+                   initial_sidebar_state="collapsed"
+                  )
 
 # ===== Sidebar custom CSS =====
 st.markdown("""
