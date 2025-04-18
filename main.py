@@ -5,7 +5,7 @@ import os
 st.set_page_config(
     page_title="Main Menu",
     page_icon="📂",
-    layout="wide",
+    layout="centered",
     initial_sidebar_state="collapsed"
 )
 
