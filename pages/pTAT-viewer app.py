@@ -32,28 +32,12 @@ if "colormap_name" not in st.session_state:
 # 사이드바를 안보이게 하는 CSS############################3
 st.markdown("""
     <style>
-    /* 사이드바 전체 배경 및 텍스트 투명화 */
-    section[data-testid="stSidebar"] {
-        background-color: white !important;
-        border: none !important;
-    }
-
-    /* 사이드바 내부 텍스트 안 보이게 */
-    section[data-testid="stSidebar"] * {
-        color: transparent !important;
-        background-color: white !important;
-    }
-
-    /* 사이드바의 expander UI 제거 */
-    section[data-testid="stSidebar"] details {
+    /* 사이드바 안의 네비게이션 메뉴 (main, sensor correlation 등) 숨김 */
+    section[data-testid="stSidebar"] ul {
         display: none;
     }
     </style>
 """, unsafe_allow_html=True)
-
-# 사이드바 비우기
-with st.sidebar:
-    st.markdown("")  # 내용 없음
 
 #####################################
 # 🌈 虹色ライン
