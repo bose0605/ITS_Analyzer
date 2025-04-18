@@ -9,6 +9,18 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+
+# 🔧 font style
+st.markdown("""
+    <style>
+    a.st-emotion-cache-6c2g0o.ef3psqc11 {  
+        font-size: 20px !important;
+        font-weight: bold !important;
+        color: #1f77b4 !important;  
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("📂 ITS Tool Menu")
 
     # sensor correlation 링크
