@@ -84,7 +84,7 @@ section[data-testid="stSidebar"] label {
 
 top_col_left, top_col_right = st.columns([8, 1])
 with top_col_left:
-    st.title("\U0001F4CA Fornewcreation-pTAT Viewer(Pyplot&Plotly)")
+    st.title("\U0001F4CA pTAT Viewer(Pyplot&Plotly)")
 with top_col_right:
     st.page_link("main.py", label="🏠 To Main")
 
