@@ -51,7 +51,10 @@ with st.sidebar.expander("1️⃣ CSVファイルの選択", expanded=True):
 
 @st.cache_data
 def load_csv(file_obj):
-    return pd.read_csv(file_obj)
+    try:
+        return pd.read_csv(file_obj, encoding="utf-8")
+    except UnicodeDecodeError:
+        return pd.read_csv(file_obj, encoding="cp932") 
 
 df = load_csv(uploaded_file)
 
