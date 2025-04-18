@@ -15,7 +15,7 @@ from pipeline_module_to_5 import full_logger_ptat_pipeline as pipeline_5
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
 # 타이틀 + 템플릿 다운로드 버튼을 한 줄에 배치
-col_title, col_button = st.columns([5, 1])
+col_title, col_button = st.columns([5, 3])  # 버튼이 길기 때문에 비율 조정
 with col_title:
     st.title("📊 Logger-PTAT Analysis Pipeline")
 with col_button:
@@ -27,7 +27,7 @@ with col_button:
     if os.path.exists(template_path):
         with open(template_path, "rb") as f:
             st.download_button(
-                label="📥 Template",
+                label="📥 Download Excel Template (for Logger-PTAT)",
                 data=f.read(),
                 file_name="Result_template.xlsm",
                 help="Download Logger-PTAT Excel Template"
