@@ -13,13 +13,13 @@ st.set_page_config(
 st.title("📂 ITS Tool Menu")
 st.markdown("### Select a tool to use:")
 
-# sensor correlation을 포함한 툴 리스트
+# 통합 메뉴 트리
 with st.expander("   └ 📂 Pull down to choose"):
+    # sensor correlation 링크
     st.page_link("pages/sensor correlation.py", label="📊 sensor correlation")
-    st.page_link("pages/pTAT-viewer app.py", label="📈 pTAT Viewer")
 
-# 템플릿 다운로드
-with st.expander("   └ 📂 Download Excel Template (for Logger-PTAT)"):
+    # sensor correlation 하위 항목처럼 들여쓰기 느낌
+    st.markdown("&nbsp;&nbsp;&nbsp;&nbsp;└ ", unsafe_allow_html=True)
     try:
         template_path = os.path.join(os.path.dirname(__file__), "Result_template.xlsm")
     except NameError:
@@ -27,9 +27,9 @@ with st.expander("   └ 📂 Download Excel Template (for Logger-PTAT)"):
 
     if os.path.exists(template_path):
         with open(template_path, "rb") as f:
-            st.download_button("📥 Result_template.xlsm", data=f.read(), file_name="Result_template.xlsm")
+            st.download_button("📥 Download Excel Template (for Logger-PTAT)", data=f.read(), file_name="Result_template.xlsm")
     else:
         st.warning("❗ Template file not found.")
 
-# 다른 페이지 링크
-st.page_link("pages/pTAT-viewer app.py", label="📈 pTAT Viewer")
+    # pTAT Viewer는 같은 레벨
+    st.page_link("pages/pTAT-viewer app.py", label="📈 pTAT Viewer")
