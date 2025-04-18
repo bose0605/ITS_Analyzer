@@ -88,17 +88,14 @@ with st.sidebar.expander("1️⃣ CSVファイルの選択", expanded=True):
 
 @st.cache_data
 def load_csv(file_obj):
-    # バイナリで読み込む
-    raw_data = file_obj.read()
+    try:
+        # 最初にUTF-8で読み込む（成功すれば速い）
+        return pd.read_csv(file_obj)
+    except UnicodeDecodeError:
+        # 失敗したらShift-JISで再読み込み（リセット必要）
+        file_obj.seek(0)
+        return pd.read_csv(file_obj, encoding="shift_jis")
 
-    # 文字コードを判定する
-    result = chardet.detect(raw_data)
-    encoding = result["encoding"]
-
-    # UTF-8へ変換（失敗した文字は ? に置換）
-    decoded = raw_data.decode(encoding, errors="replace")
-    utf8_data = decoded.encode("utf-8")  # bytesとして再エンコード（任意）
-    return pd.read_csv(StringIO(decoded))  # pandasは文字列を扱える
 
 df = load_csv(uploaded_file)
 
