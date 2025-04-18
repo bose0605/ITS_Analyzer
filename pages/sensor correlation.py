@@ -25,7 +25,7 @@ with col2:
     ptat_file = st.file_uploader("🌡 PTAT File (.csv)", type=["csv"])
 
 st.markdown("### ⚙️ Select Experiment Split Mode")
-split_mode = st.radio("Choose number of experiment segments", ["4 segments", "5 segments"], index=1)
+split_mode = st.radio("Choose number of experiment segments", ["4 segments", "5 segments"], index=0)
 
 output_name = st.text_input("💾 Output filename (without extension)", value="Merged_result_final")
 
