@@ -23,7 +23,8 @@ def sanitize_key(text: str) -> str:
 def get_color_hex(cmap, index, total):
     rgba = cmap(index / max(total - 1, 1))
     return mcolors.to_hex(rgba, keep_alpha=False)
-
+with top_col_right:
+    st.page_link("main.py", label="🏠 To Main")
 
 plt.rcParams["font.family"] = "Arial"
 st.set_page_config(layout="wide")
