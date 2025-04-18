@@ -16,6 +16,7 @@ import re
 import textwrap
 import chardet
 from io import StringIO
+st.set_page_config(layout="wide")
 
 top_col_right = st.columns([8, 1])
 with top_col_right[1]:
@@ -30,7 +31,6 @@ def get_color_hex(cmap, index, total):
 
 
 plt.rcParams["font.family"] = "Arial"
-st.set_page_config(layout="wide")
 if "colormap_name" not in st.session_state:
     st.session_state["colormap_name"] = "plasma"
 
