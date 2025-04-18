@@ -14,6 +14,12 @@ from pipeline_module_to_5 import full_logger_ptat_pipeline as pipeline_5
 
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
+# 상단 오른쪽에 Main으로 돌아가는 링크 버튼 배치
+top_col_left, top_col_right = st.columns([8, 1])
+with top_col_left:
+    st.title("📊 Logger-PTAT Analysis Pipeline")
+with top_col_right:
+    st.page_link("main.py", label="🏠 Main", icon="↩️")
 # 타이틀
 st.title("📊 Logger-PTAT Analysis Pipeline")
 
