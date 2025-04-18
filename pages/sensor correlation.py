@@ -12,7 +12,9 @@ import plotly.io as pio
 from pipeline_module_to_4 import full_logger_ptat_pipeline as pipeline_4
 from pipeline_module_to_5 import full_logger_ptat_pipeline as pipeline_5
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide",
+                  initial_sidebar_state="collapsed"
+                  )
 st.title("📊 Logger-PTAT Analysis Pipeline")
 
 st.markdown("### Upload files for analysis")
