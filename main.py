@@ -16,6 +16,7 @@ st.markdown("### Select a tool to use:")
 # sensor correlation을 포함한 툴 리스트
 with st.expander("   └ 📂 Pull down to choose"):
     st.page_link("pages/sensor correlation.py", label="📊 sensor correlation")
+    st.page_link("pages/pTAT-viewer app.py", label="📈 pTAT Viewer")
 
 # 템플릿 다운로드
 with st.expander("   └ 📂 Download Excel Template (for Logger-PTAT)"):
