@@ -1,4 +1,3 @@
-
 import streamlit as st
 import os
 
@@ -14,12 +13,17 @@ st.set_page_config(
 st.title("📂 ITS Tool Menu")
 st.markdown("### Select a tool to use:")
 
-# 메인 파이프라인 페이지 링크
-st.page_link("pages/sensor correlation.py", label="📊 sensor correlation")
+# sensor correlation을 포함한 툴 리스트
+with st.expander("   └ 📂 Pull down to choose"):
+    st.page_link("pages/sensor correlation.py", label="📊 sensor correlation")
 
-# 트리 형식으로 하위 리소스 표시
+# 템플릿 다운로드
 with st.expander("   └ 📂 Download Excel Template (for Logger-PTAT)"):
-    template_path = os.path.join(os.path.dirname(__file__), "Result_template.xlsm")
+    try:
+        template_path = os.path.join(os.path.dirname(__file__), "Result_template.xlsm")
+    except NameError:
+        template_path = os.path.join(os.getcwd(), "Result_template.xlsm")
+
     if os.path.exists(template_path):
         with open(template_path, "rb") as f:
             st.download_button("📥 Result_template.xlsm", data=f.read(), file_name="Result_template.xlsm")
@@ -28,5 +32,3 @@ with st.expander("   └ 📂 Download Excel Template (for Logger-PTAT)"):
 
 # 다른 페이지 링크
 st.page_link("pages/pTAT-viewer app.py", label="📈 pTAT Viewer")
-
-
