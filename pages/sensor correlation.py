@@ -19,7 +19,7 @@ top_col_left, top_col_right = st.columns([8, 1])
 with top_col_left:
     st.title("📊 Logger-PTAT Analysis Pipeline")
 with top_col_right:
-    st.page_link("main.py", label="🏠 Main", icon="↩️")
+    st.page_link("main.py", label="🏠 To Main")
 # 타이틀 아래 템플릿 다운로드 버튼
 try:
     template_path = os.path.join(os.path.dirname(__file__), "../Result_template.xlsm")
