@@ -64,7 +64,7 @@ if file_label != previous_file:
     st.session_state.last_selected_file = file_label
 
 # Time column detection
-time_col_candidates = [col for col in df.columns if "Time" in col.lower()]
+time_col_candidates = [col for col in df.columns if "time" in col.lower()]
 if not time_col_candidates:
     st.error("Time列が見つかりません。CSVに 'Time' 列を追加してください。")
     st.stop()
