@@ -82,7 +82,13 @@ section[data-testid="stSidebar"] label {
 """, unsafe_allow_html=True)
 
 st.title("\U0001F4CA Fornewcreation-pTAT Viewer(Pyplot&Plotly)")
-
+##########################################
+top_col_left, top_col_right = st.columns([8, 1])
+with top_col_left:
+    st.title("\U0001F4CA Fornewcreation-pTAT Viewer(Pyplot&Plotly)")
+with top_col_right:
+    st.page_link("main.py", label="🏠 To Main")
+############################################3
 # ===== ファイルアップロード =====
 with st.sidebar.expander("1️⃣ CSVファイルの選択", expanded=True):
     uploaded_file = st.file_uploader("CSVファイルをアップロード", type="csv", accept_multiple_files=False)
