@@ -22,6 +22,27 @@ def get_color_hex(cmap, index, total):
     rgba = cmap(index / max(total - 1, 1))
     return mcolors.to_hex(rgba, keep_alpha=False)
 
+def convert_to_utf8_csv(input_file):
+        filename, ext = os.path.splitext(input_file)
+        ext = ext.lower()
+        output_file = filename + '_utf8.csv'
+        try:
+            try:
+                with open(input_file, 'rb') as f:
+                    first_bytes = f.read(3)
+                encoding = 'utf-8-sig' if first_bytes.startswith(b'\xef\xbb\xbf') else 'cp949'
+                df = pd.read_csv(input_file, encoding=encoding, low_memory=False)
+            except Exception:
+                if ext == '.xls':
+                    df = pd.read_excel(input_file, engine='xlrd')
+                elif ext == '.xlsx':
+                    df = pd.read_excel(input_file, engine='openpyxl')
+                else:
+                    raise
+            df.to_csv(output_file, index=False, encoding='utf-8-sig')
+            return output_file
+        except Exception as e:
+            return None
 
 plt.rcParams["font.family"] = "Arial"
 st.set_page_config(layout="wide")
