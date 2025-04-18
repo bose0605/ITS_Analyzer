@@ -10,7 +10,6 @@ st.set_page_config(
 )
 
 st.title("📂 ITS Tool Menu")
-st.markdown("### Select a tool to use:")
 
 with st.expander("📁 Pull down to choose"):
     # sensor correlation 링크
