@@ -44,7 +44,7 @@ tools = [
 ]
 
 # 3列レイアウトで表示
-cols = st.columns(3)
+cols = st.columns(4)
 
 for i, tool in enumerate(tools):
     with cols[i % 3]:
