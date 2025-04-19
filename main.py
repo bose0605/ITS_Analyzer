@@ -28,12 +28,12 @@ tools = [
     },
     {
         "label": "📈 pTAT Viewer",
-        "href": "/pTAT_viewer_Pyplot_Plotly", 
+        "href": "/pTAT-viewer(Pyplot&Plotly)", 
         "image": "fig/2.png"
     },
     {
         "label": "📈 DTT Viewer",
-        "href": "/DTT_viewer_Pyplot_Plotly",
+        "href": "/DTT-viewer(Pyplot&Plotly)",
         "image": "fig/3.png"
     },
     {
