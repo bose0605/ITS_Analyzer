@@ -1,3 +1,4 @@
+streamlit-sortables
 streamlit
 pandas
 openpyxl
