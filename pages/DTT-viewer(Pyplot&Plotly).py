@@ -1,4 +1,3 @@
-#
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -23,21 +22,21 @@ top_col_right = st.columns([8, 1])
 with top_col_right[1]:
     st.page_link("main.py", label="🏠 To Main")
 
-def set_background(image_path: str):
-    with open(image_path, "rb") as image_file:
-        encoded = base64.b64encode(image_file.read()).decode()
-    background_css = f"""
-    <style>
-    [data-testid="stAppViewContainer"] {{
-        background-image: url("data:image/jpg;base64,{encoded}");
-        background-size: cover;
-        background-position: center;
-        background-repeat: no-repeat;
-        background-attachment: fixed;
-    }}
-    </style>
-    """
-    st.markdown(background_css, unsafe_allow_html=True)
+# def set_background(image_path: str):
+#     with open(image_path, "rb") as image_file:
+#         encoded = base64.b64encode(image_file.read()).decode()
+#     background_css = f"""
+#     <style>
+#     [data-testid="stAppViewContainer"] {{
+#         background-image: url("data:image/jpg;base64,{encoded}");
+#         background-size: cover;
+#         background-position: center;
+#         background-repeat: no-repeat;
+#         background-attachment: fixed;
+#     }}
+#     </style>
+#     """
+#     st.markdown(background_css, unsafe_allow_html=True)
 
 # ✅ 画像ファイルのパスを指定（アプリと同じディレクトリにある想定）
 
