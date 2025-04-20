@@ -75,7 +75,7 @@ section[data-testid="stSidebar"] label {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("\U0001F4CA pTAT Viewer(Pyplot&Plotly)")
+st.title("\U0001F4CA pTAT Viewer")
 
 # ===== ファイルアップロード =====
 with st.sidebar.expander("1️⃣ CSVファイルの選択", expanded=True):
