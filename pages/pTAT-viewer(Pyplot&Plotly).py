@@ -14,13 +14,32 @@ from io import BytesIO
 import matplotlib.colors as mcolors
 import re  
 import textwrap
-import chardet
 from io import StringIO
+import base64
 st.set_page_config(layout="wide")
 
 top_col_right = st.columns([8, 1])
 with top_col_right[1]:
     st.page_link("main.py", label="🏠 To Main")
+
+# def set_background(image_path: str):
+#     with open(image_path, "rb") as image_file:
+#         encoded = base64.b64encode(image_file.read()).decode()
+#     background_css = f"""
+#     <style>
+#     [data-testid="stAppViewContainer"] {{
+#         background-image: url("data:image/jpg;base64,{encoded}");
+#         background-size: cover;
+#         background-position: center;
+#         background-repeat: no-repeat;
+#         background-attachment: fixed;
+#     }}
+#     </style>
+#     """
+#     st.markdown(background_css, unsafe_allow_html=True)
+
+# ✅ 画像ファイルのパスを指定（アプリと同じディレクトリにある想定）
+# set_background("1938176.jpg")
 
 def sanitize_key(text: str) -> str:
     return re.sub(r'\W+', '_', text)
@@ -32,12 +51,12 @@ def get_color_hex(cmap, index, total):
 
 plt.rcParams["font.family"] = "Arial"
 if "colormap_name" not in st.session_state:
-    st.session_state["colormap_name"] = "plasma"
+    st.session_state["colormap_name"] = "brg"
 
 # 🌈 虹色ライン
 st.markdown("""
 <hr style="
-  height: 6px;
+  height: 8px;
   border: none;
   border-radius: 3px;
   background: linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet);
@@ -86,7 +105,7 @@ with st.sidebar.expander("1️⃣ CSVファイルの選択", expanded=True):
         st.stop()
 
     file = uploaded_file.name
-    x_axis_title = st.text_input("X軸のタイトル", value="Time (s)", key="x_axis_title_input")
+    x_axis_title = st.text_input("X軸のタイトル", value="Time", key="x_axis_title_input")
     y_axis_title = st.text_input("縦軸のタイトル", value="Power (W)", key="y_axis_title_input")
     previous_file = st.session_state.get("last_selected_file", None)
 
@@ -568,27 +587,54 @@ with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
         st.error(f"グラフ描画中にエラーが発生しました: {e}")
 
 # ==== タブのラベルと対応するヘッダー ====
-tab_labels = ["Frequency", "CPU temp", "IA-clip reason","GT-clip reason", "Phidget"]
+tab_labels = ["Frequency", "CPU temp", "IA-clip reason","GT-clip reason", "Phidget","EPP&Mode"]
 tab_headers = {
     "Frequency": ":part_alternation_mark: All-core Frequencys",
-    "CPU temp": "🌡 All-core Temperature",
+    "CPU temp": ":thermometer: All-core Temperature",
     "IA-clip reason": ":warning: IA-Clip Reason",
     "GT-clip reason": ":warning: GT-Clip Reason",
-    "Phidget": ":thermometer: Phidget Sensors"
+    "Phidget": ":thermometer: Phidget Sensors",
+    "EPP&Mode": ":battery: EPP & PowerMode"
 }
 # ==== タブ表示・タイトル表示 ====
 st.markdown("""
 <hr style="
-  height: 6px;
+  height: 8px;
   border: none;
   border-radius: 3px;
-  background: linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet);
-  margin-top: 30px;
-  margin-bottom: 36px;
+  background: linear-gradient(to right, #60a760, #9c8eb0, #d69e6a, #dad577, #335f8c, #b10c67, #039CB2);
+  margin-top: 44px;
+  margin-bottom: 40px;
 ">
 """, unsafe_allow_html=True)
 
+# ==== タブのラベルと対応するヘッダー ====
+tab_labels = ["Frequency", "CPU temp", "IA-clip reason","GT-clip reason", "Phidget","EPP&Mode"]
+tab_headers = {
+    "Frequency": ":part_alternation_mark: All-core Frequencys",
+    "CPU temp": ":thermometer: All-core Temperature",
+    "IA-clip reason": ":warning: IA-Clip Reason",
+    "GT-clip reason": ":warning: GT-Clip Reason",
+    "Phidget": ":thermometer: Phidget Sensors",
+    "EPP&Mode": ":battery: EPP & PowerMode"
+}
+
+# ==== ✅ タブのフォントサイズを大きくする ====
+st.markdown("""
+<style>
+button[data-baseweb="tab"] > div[data-testid="stMarkdownContainer"] > p {
+    font-size: 19px !important;
+    font-weight: bold;
+    text-align: center;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ==== タブ表示・タイトル表示 ====
 tabs = st.tabs(tab_labels)
+for i, tab in enumerate(tabs):
+    with tab:
+        st.session_state["tab_index"] = i
 
 # ==== タブ処理 ====
 with tabs[0]:
@@ -967,6 +1013,99 @@ with tabs[4]:
     else:
         st.info("Phidget温度に関する列が見つかりませんでした。")
 
+with tabs[5]:
+    st.markdown(f"## {tab_headers['EPP&Mode']}")
+
+    epp_col = next((col for col in df.columns if "energy performance preference" in col.lower()), None)
+    oem_col = next((col for col in df.columns if "oem18" in col.lower()), None)
+
+    if epp_col:
+        df[epp_col] = df[epp_col].apply(lambda x: round(x / 2.55) if pd.notnull(x) else x)
+
+    if epp_col and oem_col:
+        fig_epp = go.Figure()
+
+        fig_epp.add_trace(go.Scatter(
+            x=time_vals,
+            y=df[epp_col],
+            mode="lines",
+            name=epp_col,
+            yaxis="y1",
+            line=dict(color="purple")
+        ))
+
+        fig_epp.add_trace(go.Scatter(
+            x=time_vals,
+            y=df[oem_col],
+            mode="markers",
+            name=oem_col,
+            yaxis="y2",
+            line=dict(color="green")
+        ))
+
+        fig_epp.update_layout(
+            height=600,
+            width=1400,
+            margin=dict(l=50, r=100, t=50, b=50),
+            xaxis=dict(title="Time", tickfont=dict(size=16)),
+            yaxis=dict(
+            title=dict(text=epp_col, font=dict(size=16)),
+            tickfont=dict(size=14),
+            dtick=5,
+            gridcolor='rgba(200, 150, 255, 0.17)'
+            ),
+            yaxis2=dict(
+            title=dict(text=oem_col, font=dict(size=16)),
+            tickfont=dict(size=14),
+            overlaying='y',
+            side='right',
+            showgrid=False,  # グリッド非表示
+            tickmode='linear',
+            tick0=0,
+            dtick=1          # 目盛間隔を1に
+        )
+    )
+
+        st.plotly_chart(fig_epp, use_container_width=True)
+
+        # 画像表示（DYTCテーブル）
+        dytc_html_table = """
+        <style>
+        .table-custom {
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+        }
+        .table-custom th, .table-custom td {
+        padding: 6px 12px;
+        border: 1px solid #ccc;
+        }
+        </style>
+
+        <table class="table-custom">
+        <thead>
+            <tr>
+            <th>Mode-oem18</th>
+            <th>DYTC 8 (AMO) - AC</th>
+            <th>DYTC 8 (AMO) - DC</th>
+            <th>DYTC9 (OSD) - AC</th>
+            <th>DYTC9 (OSD) - DC</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td>Energy saver</td><td>2</td><td>2</td><td>1</td><td>1</td></tr>
+            <tr><td>Best Power Efficiency</td><td>3</td><td>4</td><td>2</td><td>2</td></tr>
+            <tr><td>Balanced</td><td>5</td><td>6</td><td>3</td><td>3</td></tr>
+            <tr><td>Best Performance</td><td>7</td><td>8</td><td>4</td><td>4</td></tr>
+        </tbody>
+        </table>
+        """
+
+        st.markdown(dytc_html_table, unsafe_allow_html=True)
+
+    else:
+        st.warning("必要な列（EPP または oem18）が見つかりません。")
+
 # ===== CoreType表示（段組＋カラーマップ対応）を成功風UIで表示 =====
 core_type_map = {}
 for col in df.columns:
@@ -988,13 +1127,13 @@ if core_type_map:
         margin:20px 0;
         color:white;
     '>
-        <div style='font-weight:bold; font-size:18px; margin-bottom:10px;'>Core Type Overview</div>
+        <div style='font-weight:bold; font-size:25px; margin-bottom:10px;'>Core Type Overview</div>
         <div style='display:flex; flex-wrap:wrap; gap:20px;'>
     """)
 
     for ctype, cores in grouped.items():
-        html += f"<div><div style='font-weight:bold; margin-bottom:0px'>{ctype} Cores</div>"
-        html += "<div style='display:flex; flex-wrap:wrap; gap:8px; font-size:14px;'>"
+        html += f"<div><div style='font-weight:bold; font-size:18px; margin-bottom:0px'>{ctype} Cores</div>"
+        html += "<div style='display:flex; flex-wrap:wrap; gap:11px; font-size:17px;'>"
         for core in cores:
             html += f"<span>{core}</span>"
         html += "</div></div>"
