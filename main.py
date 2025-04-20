@@ -22,22 +22,22 @@ def get_base64_of_bin_file(bin_file_path):
 # 表示するツールリストと画像パス
 tools = [
     {
-        "label": "📊 sensor correlation",
+        "label": "sensor correlation",
         "href": "/sensor_correlation", 
         "image": "fig/1.png"
     },
     {
-        "label": "📈 pTAT Viewer",
+        "label": "pTAT Viewer",
         "href": "/pTAT-viewer(Pyplot&Plotly)", 
         "image": "fig/2.png"
     },
     {
-        "label": "📈 DTT Viewer",
+        "label": "DTT Viewer",
         "href": "/DTT-viewer(Pyplot&Plotly)",
         "image": "fig/3.png"
     },
     {
-        "label": "📈 converter",
+        "label": "converter",
         "href": "/converter",
         "image": "fig/4.png"
     }
@@ -47,7 +47,7 @@ tools = [
 cols = st.columns(4)
 
 for i, tool in enumerate(tools):
-    with cols[i % 3]:
+    with cols[i % 4]:
         if os.path.exists(tool["image"]):
             image_base64 = get_base64_of_bin_file(tool["image"])
             st.markdown(
