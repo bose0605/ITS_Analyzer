@@ -222,7 +222,7 @@ with st.sidebar.expander("2️⃣ 第一縦軸の列設定", expanded=True):
 # ===== グラフ書式設定 + フォント + 軸範囲 + 凡例 + 第二縦軸トグル まとめてexpander =====
 with st.sidebar.expander("3️⃣ グラフ書式設定", expanded=True):
     colormap_list = sorted(plt.colormaps())
-    default_cmap = "brg"
+    default_cmap = "Accent"
     st.session_state["colormap_name"] = st.selectbox(
         "カラーマップを選択",
         colormap_list,
