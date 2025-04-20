@@ -8,6 +8,10 @@ from streamlit_sortables import sort_items
 
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
+top_col_right = st.columns([8, 1])
+with top_col_right[1]:
+    st.page_link("main.py", label="🏠 To Main")
+    
 # ✅ 全体フォントをArialに統一
 st.markdown("""
     <style>
