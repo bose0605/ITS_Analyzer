@@ -23,11 +23,6 @@ top_col_right = st.columns([8, 1])
 with top_col_right[1]:
     st.page_link("main.py", label="🏠 To Main")
 
-
-top_col_right = st.columns([8, 1])
-with top_col_right[1]:
-    st.page_link("main.py", label="🏠 To Main")
-
 def set_background(image_path: str):
     with open(image_path, "rb") as image_file:
         encoded = base64.b64encode(image_file.read()).decode()
