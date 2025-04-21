@@ -1,22 +1,63 @@
-#multiselect 1回で反映されない(sortables使えんかね)
+# Multiselect does not reflect immediately (maybe sortables?)
 import streamlit as st
 import pandas as pd
 from io import BytesIO
 import plotly.express as px
 import xlsxwriter
 from streamlit_sortables import sort_items
-import pages.thi_converter as thi 
+import re
 
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
+# === THI converter function ===
+def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
+    header = [
+        "Count", "AC", "TM", "L0", "L1", "L2", "L3", "Fan", "ATM", "CPU",
+        "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9",
+        "Sa", "Sb", "Sc", "Sd", "Se", "Sf", "Time"
+    ]
+
+    data = []
+    lines = file_content.splitlines()
+
+    for line in lines:
+        if re.match(r"^\s*\d+", line):
+            tokens = re.split(r"\s+", line.strip())
+            try:
+                if len(tokens) > 8 and tokens[7].endswith("/"):
+                    tokens[7] = tokens[8]
+                    del tokens[8]
+                if len(tokens) > 9 and "/" not in tokens[8]:
+                    tokens[8] = tokens[8] + tokens[9]
+                    del tokens[9]
+                if len(tokens) > 8:
+                    tokens[8] = f"'{tokens[8]}"
+                if re.match(r"\d{2}:\d{2}:\d{2}$", tokens[-1]):
+                    time_value = tokens[-1]
+                else:
+                    time_value = ""
+                tokens = tokens[:27]
+                if len(tokens) == 27:
+                    tokens[-1] = time_value
+                    data.append(tokens)
+            except:
+                continue
+
+    if not data:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(data, columns=header)
+    df["ATM"] = df["ATM"].astype(str)
+    return df
+
+# === UI Header ===
 top_col_right = st.columns([8, 1])
 with top_col_right[1]:
     st.page_link("main.py", label="🏠 To Main")
-    
-# ✅ 全体フォントをArialに統一
+
 st.markdown("""
     <style>
-    html, body, [class^="css"]  {
+    html, body, [class^="css"] {
         font-family: Arial, sans-serif !important;
     }
     .stButton button {
@@ -29,26 +70,17 @@ st.markdown("""
 row = st.columns([6, 1])
 with row[0]:
     st.title(" Data Wrangling & Visualization UI")
-    st.subheader(":one: 各種ログをドラッグ＆ドロップ（複数or単数 可)")
+    st.subheader(":one: Drag and drop log files (single or multiple allowed)")
 with row[1]:
     st.markdown("<div style='padding-top: 2.5rem;'>", unsafe_allow_html=True)
     if st.button("▶️ Run Conversion"):
         st.session_state.run_conversion = True
     st.markdown("</div>", unsafe_allow_html=True)
 
+# === File Upload Section ===
 file_labels = ["pTAT", "DTT", "THI", "FanCK", "logger"]
 cols = st.columns(len(file_labels))
 uploaded_data = {}
-
-for f in uploaded_files:
-    if label == "THI":
-        file_str = f.read().decode('utf-8', errors='ignore')  # text 읽기
-        df = thi.convert_thi_txt_to_df(file_str)              # txt 파싱
-    else:
-        try:
-            df = pd.read_csv(f, encoding_errors='ignore')     # CSV 파싱
-        except pd.errors.ParserError:
-            st.warning(f"{label} 파일에서 오류 발생. 건너뜁니다.")
 
 for i, label in enumerate(file_labels):
     with cols[i]:
@@ -57,17 +89,29 @@ for i, label in enumerate(file_labels):
         if uploaded_files:
             uploaded_data[label] = []
             for f in uploaded_files:
-                df = pd.read_csv(f, encoding_errors='ignore')
-                if label == "pTAT":
-                    for col in df.columns:
-                        if "time" in col.lower():
-                            df[col] = df[col].astype(str).str.extract(r'(\d{2}:\d{2}:\d{2})')[0]
-                if label == "DTT":
-                    for col in df.columns:
-                        if "power" in col.lower() and "(mW)" in col:
-                            df[col] = pd.to_numeric(df[col], errors='coerce') / 1000
-                            df.rename(columns={col: col.replace("(mW)", "(W)")}, inplace=True)
-               
+                # Handle THI .txt files
+                if label == "THI":
+                    file_str = f.read().decode('utf-8', errors='ignore')
+                    df = convert_thi_txt_to_df(file_str)
+                else:
+                    try:
+                        df = pd.read_csv(f, encoding_errors='ignore')
+                    except pd.errors.ParserError:
+                        st.warning(f"Error reading {label} file. Skipping.")
+                        continue
+
+                    if label == "pTAT":
+                        for col in df.columns:
+                            if "time" in col.lower():
+                                df[col] = df[col].astype(str).str.extract(r'(\d{2}:\d{2}:\d{2})')[0]
+
+                    if label == "DTT":
+                        for col in df.columns:
+                            if "power" in col.lower() and "(mW)" in col:
+                                df[col] = pd.to_numeric(df[col], errors='coerce') / 1000
+                                df.rename(columns={col: col.replace("(mW)", "(W)")}, inplace=True)
+
+                # Rename columns with label suffix
                 renamed_cols = []
                 for col in df.columns:
                     if "time" in col.lower():
@@ -77,6 +121,7 @@ for i, label in enumerate(file_labels):
                 df.columns = renamed_cols
                 uploaded_data[label].append(df)
 
+# === Visualization and XLSX Export ===
 run_conversion = st.session_state.get("run_conversion", False)
 
 if run_conversion:
@@ -91,12 +136,12 @@ if run_conversion:
     if "sorted_y_axes" not in st.session_state:
         st.session_state.sorted_y_axes = {}
 
-    st.subheader("\U0001F4CA Plotlyグラフ設定")
+    st.subheader("📊 Plotly Chart Configuration")
 
     source_label = next((label for label, dfs in uploaded_data.items() for df in dfs if st.session_state.x_axis in df.columns), None)
     source_suffix = f"<span style='color:green; font-size:0.8rem; margin-left:10px;'>From:{source_label}</span>" if source_label else ""
-    st.markdown(f"<div style='margin-bottom:0rem;'><label style='font-size:1.1rem;'>X軸に使用する列を選択 {source_suffix}</label></div>", unsafe_allow_html=True)
-    st.session_state.x_axis = st.selectbox(" ", options=[""] + all_columns, index=( [""] + all_columns ).index(st.session_state.x_axis) if st.session_state.x_axis in all_columns else 0, key="x_axis_global")
+    st.markdown(f"<div style='margin-bottom:0rem;'><label style='font-size:1.1rem;'>Select X-axis column {source_suffix}</label></div>", unsafe_allow_html=True)
+    st.session_state.x_axis = st.selectbox(" ", options=[""] + all_columns, index=([""] + all_columns).index(st.session_state.x_axis), key="x_axis_global")
 
     y_select_cols = st.columns(len(file_labels))
     for i, label in enumerate(file_labels):
@@ -111,18 +156,18 @@ if run_conversion:
         if label not in st.session_state.sorted_y_axes:
             st.session_state.sorted_y_axes[label] = []
 
-        y_col = y_select_cols[i].selectbox(f"Y軸の列を追加 ({label})", options=[""] + [col for col in available_cols if col not in st.session_state.sorted_y_axes[label]], key=f"y_axis_add_{label}")
+        y_col = y_select_cols[i].selectbox(f"Add Y-axis column ({label})", options=[""] + [col for col in available_cols if col not in st.session_state.sorted_y_axes[label]], key=f"y_axis_add_{label}")
         if y_col:
             if y_col not in st.session_state.sorted_y_axes[label]:
                 st.session_state.sorted_y_axes[label].append(y_col)
             st.session_state.y_axes[label] = st.session_state.sorted_y_axes[label].copy()
 
-    st.markdown("#### 選択中のY軸カラム（並び替え＆削除可）")
+    st.markdown("#### Selected Y-axis columns (sortable & removable)")
     y_multi_cols = st.columns(len(file_labels))
     visible_all = []
     for i, label in enumerate(file_labels):
         sorted_y = st.session_state.sorted_y_axes[label]
-        visible = y_multi_cols[i].multiselect(f"描画する列（{label}）", options=sorted_y, default=st.session_state.y_axes[label], key=f"visible_{label}")
+        visible = y_multi_cols[i].multiselect(f"Columns to plot ({label})", options=sorted_y, default=st.session_state.y_axes[label], key=f"visible_{label}")
         st.session_state.y_axes[label] = visible
         visible_all += visible
 
@@ -147,8 +192,8 @@ if run_conversion:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("\U0001F4C4 XLSX列並び替え設定")
-    reorder_cols = [st.selectbox(f"→ {chr(65+i)}列に表示", all_columns, key=f"reorder_{i}") for i in range(5)]
+    st.subheader("📄 XLSX Column Reordering")
+    reorder_cols = [st.selectbox(f"→ Column {chr(65+i)}", all_columns, key=f"reorder_{i}") for i in range(5)]
 
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -159,7 +204,7 @@ if run_conversion:
     output.seek(0)
 
     st.download_button(
-        label="\U0001F4E5 XLSXとしてダウンロード",
+        label="📥 Download as XLSX",
         data=output,
         file_name="converted_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
