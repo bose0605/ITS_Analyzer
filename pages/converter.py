@@ -154,14 +154,18 @@ for i, label in enumerate(file_labels):
                 elif label == "FanCK":
                     try:
                         df = pd.read_csv(f, encoding_errors='ignore')
+
+                        # Convert first column to HH:MM:SS and rename it to 'Time'
                         def convert_to_time(timestamp):
                             timestamp_str = str(int(timestamp))
                             hours = int(timestamp_str[:2])
                             minutes = int(timestamp_str[2:4])
                             seconds = int(timestamp_str[4:])
                             return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                        first_col_name = df.columns[0]
-                        df["Time (FanCK)"] = df[first_col_name].apply(convert_to_time)
+
+                        df.iloc[:, 0] = df.iloc[:, 0].apply(convert_to_time)
+                        df.columns.values[0] = "Time"
+
                     except Exception as e:
                         st.warning(f"Error reading or processing FanCK file: {e}")
                         continue
