@@ -16,6 +16,7 @@ import re
 import textwrap
 from io import StringIO
 import base64
+import matplotlib.font_manager as fm
 st.set_page_config(layout="wide")
 
 # top_col_right = st.columns([8, 1])
@@ -50,6 +51,11 @@ def get_color_hex(cmap, index, total):
 
 
 plt.rcParams["font.family"] = "Arial"
+arial_fonts = [f.fname for f in fm.fontManager.ttflist if 'Arial' in f.name]
+if arial_fonts:
+    plt.rcParams["font.family"] = fm.FontProperties(fname=arial_fonts[0]).get_name()
+else:
+    st.warning("⚠️ Arialフォントが見つかりません。別のフォントが使われます。")
 if "colormap_name" not in st.session_state:
     st.session_state["colormap_name"] ="Accent"
 
