@@ -51,7 +51,7 @@ def get_color_hex(cmap, index, total):
 
 plt.rcParams["font.family"] = "Arial"
 if "colormap_name" not in st.session_state:
-    st.session_state["colormap_name"] = "brg"
+    st.session_state["colormap_name"] ="Accent"
 
 # 🌈 虹色ライン
 st.markdown("""
@@ -186,27 +186,26 @@ with st.sidebar.expander("2️⃣ 第一縦軸の列設定", expanded=True):
         key="primary_add_selectbox"
     )
 
-
-    # セレクトボックスで新規選択されたら追加し rerun（session_stateは触らない！）
     if selected_to_add and selected_to_add not in st.session_state.selected_y_cols:
         st.session_state.selected_y_cols.append(selected_to_add)
-        st.rerun() 
-
+        st.rerun()
 
     st.markdown("### 第一縦軸 描画中の列")
-    remove_cols = st.multiselect(
+    current_selected = st.session_state.selected_y_cols.copy()
+    updated_selection = st.multiselect(
         "チェックを外すと削除",
-        options=st.session_state.selected_y_cols,
-        default=st.session_state.selected_y_cols,
+        options=current_selected,
+        default=current_selected,
         key="primary_remove_multiselect"
     )
-    st.session_state.selected_y_cols = remove_cols
+    if set(updated_selection) != set(current_selected):
+        st.session_state.selected_y_cols = updated_selection
+        st.rerun()
 
     priority_col = "Power-Package Power(Watts)"
     if priority_col in st.session_state.selected_y_cols:
         st.session_state.selected_y_cols.remove(priority_col)
         st.session_state.selected_y_cols.insert(0, priority_col)
-
 
 # ===== グラフ書式設定 + フォント + 軸範囲 + 凡例 + 第二縦軸トグル まとめてexpander =====
 with st.sidebar.expander("3️⃣ グラフ書式設定", expanded=True):
@@ -309,22 +308,38 @@ style_options = {
     "ドット線": {"dash": "dot", "marker": None}
 }
 
-# ===== 平均値表示のUI（Expanderでまとめて制御） =====
-if "show_avg_lines" not in st.session_state:
-    st.session_state.show_avg_lines = False
+# ===== Plotlyグラフ描画 =====
+if "style_map" not in st.session_state:
+    st.session_state["style_map"] = {}
 
+# ✅ 列名ベースで色を固定するカラーマップを作成
+colormap_name = st.session_state["colormap_name"]
+colormap = cm.get_cmap(colormap_name)
+all_plot_cols = selected_y_cols + secondary_y_cols
+color_map = {
+    col: get_color_hex(colormap, idx, len(all_plot_cols))
+    for idx, col in enumerate(all_plot_cols)
+}
+
+style_options = {
+    "直線": {"dash": None, "marker": None},
+    "点線": {"dash": "dash", "marker": None},
+    "点のみ": {"dash": None, "marker": "circle"},
+    "線＋点": {"dash": None, "marker": "circle"},
+    "破線＋点": {"dash": "dash", "marker": "circle"},
+    "ドット線": {"dash": "dot", "marker": None}
+}
 
 fig = go.Figure()
-total_lines = len(selected_y_cols) + len(secondary_y_cols)
 
-for i, col in enumerate(selected_y_cols):
+for col in selected_y_cols:
     style = style_options.get(st.session_state["style_map"].get(col, "直線"), {})
     fig.add_trace(go.Scatter(
         x=time_vals,
         y=df[col],
         name=col,
         line=dict(
-            color=get_color_hex(colormap, i, total_lines),  # ← ここが統一の肝
+            color=color_map[col],
             dash=style.get("dash")
         ),
         mode="lines+markers" if style.get("marker") else "lines",
@@ -334,14 +349,14 @@ for i, col in enumerate(selected_y_cols):
         showlegend=True
     ))
 
-for j, col in enumerate(secondary_y_cols):
+for col in secondary_y_cols:
     style = style_options.get(st.session_state["style_map"].get(col, "点のみ"), {})
     fig.add_trace(go.Scatter(
         x=time_vals,
         y=df[col],
         name=col,
         line=dict(
-            color=get_color_hex(colormap, len(selected_y_cols) + j, total_lines),  # ← 同じ関数で
+            color=color_map[col],
             dash=style.get("dash")
         ),
         mode="lines+markers" if style.get("marker") else "lines",
