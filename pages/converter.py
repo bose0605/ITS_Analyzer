@@ -1,3 +1,4 @@
+# converter.py
 import streamlit as st
 import pandas as pd
 from io import BytesIO
@@ -46,20 +47,32 @@ def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
     df["ATM"] = df["ATM"].astype(str)
     return df
 
-# === Logger extractor ===
-def extract_logger_columns_from_uploaded_file(uploaded_file, min_val=0, max_val=75, time_label="Time"):
+# === Logger parser ===
+def extract_logger_columns_with_conversion(uploaded_file, min_val=0, max_val=75, time_label="Time"):
+    filename = uploaded_file.name
+    file_ext = os.path.splitext(filename)[-1].lower()
     try:
-        df = pd.read_csv(uploaded_file, encoding='utf-8-sig', header=None, low_memory=False)
+        if file_ext == ".csv":
+            df = pd.read_csv(uploaded_file, encoding="utf-8-sig", header=None, low_memory=False)
+        elif file_ext == ".xls":
+            df = pd.read_excel(uploaded_file, engine="xlrd", header=None)
+        elif file_ext == ".xlsx":
+            df = pd.read_excel(uploaded_file, engine="openpyxl", header=None)
+        else:
+            return None, "Unsupported logger file format."
         header_row = df.iloc[8]
         time_row = df.iloc[9]
         data = df.iloc[10:].copy()
-        time_index = list(time_row).index(time_label)
+        try:
+            time_index = list(time_row).index(time_label)
+        except ValueError:
+            return None, "Time column not found."
         valid_columns = []
         for col in data.columns:
             if col == time_index:
                 continue
             try:
-                col_values = pd.to_numeric(data[col], errors='coerce').dropna()
+                col_values = pd.to_numeric(data[col], errors="coerce").dropna()
                 if not col_values.empty and col_values.between(min_val, max_val).all():
                     valid_columns.append(col)
             except:
@@ -69,15 +82,14 @@ def extract_logger_columns_from_uploaded_file(uploaded_file, min_val=0, max_val=
         selected_headers = header_row[col_indices].copy()
         selected_headers.iloc[0] = time_label
         selected_data.columns = selected_headers
-        return selected_data
+        return selected_data, None
     except Exception as e:
-        st.warning(f"Logger file format issue: {e}")
-        return pd.DataFrame()
+        return None, f"Error: {e}"
 
-# === UI Header ===
+# === UI Setup ===
 top_col_right = st.columns([8, 1])
 with top_col_right[1]:
-    st.page_link("main.py", label="🏠 To Main")
+    st.page_link("main.py", label="\U0001F3E0 To Main")
 
 st.markdown("""
     <style>
@@ -116,7 +128,10 @@ for i, label in enumerate(file_labels):
                     file_str = f.read().decode('utf-8', errors='ignore')
                     df = convert_thi_txt_to_df(file_str)
                 elif label == "logger":
-                    df = extract_logger_columns_from_uploaded_file(f)
+                    df, error = extract_logger_columns_with_conversion(f)
+                    if error:
+                        st.warning(f"Logger parse error: {error}")
+                        continue
                 else:
                     try:
                         df = pd.read_csv(f, encoding_errors='ignore')
@@ -153,12 +168,12 @@ if run_conversion:
     if "sorted_y_axes" not in st.session_state:
         st.session_state.sorted_y_axes = {}
 
-    st.subheader("📊 Plotly Graph Settings")
+    st.subheader("\U0001F4CA Plotly Graph Settings")
 
     source_label = next((label for label, dfs in uploaded_data.items() for df in dfs if st.session_state.x_axis in df.columns), None)
     source_suffix = f"<span style='color:green; font-size:0.8rem; margin-left:10px;'>From:{source_label}</span>" if source_label else ""
     st.markdown(f"<div style='margin-bottom:0rem;'><label style='font-size:1.1rem;'>Select X-axis column {source_suffix}</label></div>", unsafe_allow_html=True)
-    st.session_state.x_axis = st.selectbox(" ", options=[""] + all_columns, index=([""] + all_columns).index(st.session_state.x_axis), key="x_axis_global")
+    st.session_state.x_axis = st.selectbox(" ", options=[""] + all_columns, index=( [""] + all_columns ).index(st.session_state.x_axis), key="x_axis_global")
 
     y_select_cols = st.columns(len(file_labels))
     for i, label in enumerate(file_labels):
@@ -208,7 +223,7 @@ if run_conversion:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("📄 XLSX Column Reordering")
+    st.subheader("\U0001F4C4 XLSX Column Reordering")
     reorder_cols = [st.selectbox(f"→ Column {chr(65+i)}", all_columns, key=f"reorder_{i}") for i in range(5)]
 
     output = BytesIO()
@@ -220,7 +235,7 @@ if run_conversion:
     output.seek(0)
 
     st.download_button(
-        label="📥 Download as XLSX",
+        label="\U0001F4E5 Download as XLSX",
         data=output,
         file_name="converted_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
