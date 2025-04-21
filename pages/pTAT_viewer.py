@@ -18,9 +18,9 @@ from io import StringIO
 import base64
 st.set_page_config(layout="wide")
 
-top_col_right = st.columns([8, 1])
-with top_col_right[1]:
-    st.page_link("main.py", label="🏠 To Main")
+# top_col_right = st.columns([8, 1])
+# with top_col_right[1]:
+#     st.page_link("main.py", label="🏠 To Main")
 
 # def set_background(image_path: str):
 #     with open(image_path, "rb") as image_file:
@@ -129,11 +129,16 @@ if not time_col_candidates:
     st.stop()
 time_col = time_col_candidates[0]
 
+# ✅ hh:mm:ss形式へ変換（pTAT形式対応）
 try:
-    df[time_col] = pd.to_datetime(df[time_col])
+    if df[time_col].dtype == object:
+        df[time_col] = df[time_col].astype(str).str.extract(r'(\d{2}:\d{2}:\d{2})')[0]
+    df[time_col] = pd.to_datetime(df[time_col], errors='coerce')
     time_vals = df[time_col].dt.strftime("%H:%M:%S")
-except:
+except Exception as e:
+    st.warning(f"Time列の変換に失敗しました: {e}")
     time_vals = df[time_col]
+
 
 # ===== デフォルト縦軸列取得関数 =====
 def get_default_power_cols():
@@ -293,25 +298,6 @@ secondary_y_cols = st.session_state.get("secondary_y_cols", []) if use_secondary
 if "style_map" not in st.session_state:
     st.session_state["style_map"] = {}
 
-for col in selected_y_cols + secondary_y_cols:
-    st.session_state["style_map"].setdefault(col, "直線")
-
-colormap_name = st.session_state["colormap_name"]
-colormap = cm.get_cmap(colormap_name)
-
-style_options = {
-    "直線": {"dash": None, "marker": None},
-    "点線": {"dash": "dash", "marker": None},
-    "点のみ": {"dash": None, "marker": "circle"},
-    "線＋点": {"dash": None, "marker": "circle"},
-    "破線＋点": {"dash": "dash", "marker": "circle"},
-    "ドット線": {"dash": "dot", "marker": None}
-}
-
-# ===== Plotlyグラフ描画 =====
-if "style_map" not in st.session_state:
-    st.session_state["style_map"] = {}
-
 # ✅ 列名ベースで色を固定するカラーマップを作成
 colormap_name = st.session_state["colormap_name"]
 colormap = cm.get_cmap(colormap_name)
@@ -349,18 +335,15 @@ for col in selected_y_cols:
         showlegend=True
     ))
 
+# ✅ 第二軸のプロットはすべて markers のみに統一
 for col in secondary_y_cols:
-    style = style_options.get(st.session_state["style_map"].get(col, "点のみ"), {})
     fig.add_trace(go.Scatter(
         x=time_vals,
         y=df[col],
         name=col,
-        line=dict(
-            color=color_map[col],
-            dash=style.get("dash")
-        ),
-        mode="lines+markers" if style.get("marker") else "lines",
-        marker=dict(symbol=style.get("marker")) if style.get("marker") else None,
+        mode="markers",
+        marker=dict(color=color_map[col], symbol="circle"),
+        line=dict(color=color_map[col]),
         yaxis="y2",
         legendgroup="group2",
         showlegend=True
