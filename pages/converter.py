@@ -110,7 +110,62 @@ uploaded_data = st.session_state.uploaded_data
 file_labels = ["pTAT", "DTT", "THI", "FanCK", "logger"]
 cols = st.columns(len(file_labels))
 
-# ... (기존 업로더 및 변환 로직 그대로 유지)
+# === File Upload and Parsing ===
+for i, label in enumerate(file_labels):
+    with cols[i]:
+        uploaded_files = st.file_uploader(f"📁 {label}", accept_multiple_files=True, key=f"file_{label}")
+        if uploaded_files:
+            uploaded_data[label] = []
+            for f in uploaded_files:
+                if label == "THI":
+                    file_str = f.read().decode('utf-8', errors='ignore')
+                    df = convert_thi_txt_to_df(file_str)
+                elif label == "logger":
+                    df, error = extract_logger_columns_with_conversion(f)
+                    if error:
+                        st.warning(f"Logger parse error: {error}")
+                        continue
+                elif label == "FanCK":
+                    try:
+                        df = pd.read_csv(f, encoding_errors='ignore')
+                        def convert_to_time(timestamp):
+                            timestamp_str = str(int(timestamp))
+                            time_digits = timestamp_str[-6:]
+                            hours = int(time_digits[:2])
+                            minutes = int(time_digits[2:4])
+                            seconds = int(time_digits[4:])
+                            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                        df.iloc[:, 0] = df.iloc[:, 0].apply(convert_to_time)
+                        original_cols = df.columns.tolist()
+                        df.columns = ["Time"] + [f"{col} (FanCK)" for col in original_cols[1:]]
+                    except Exception as e:
+                        st.warning(f"Error processing FanCK file: {e}")
+                        continue
+                else:
+                    try:
+                        df = pd.read_csv(f, encoding_errors='ignore')
+                    except pd.errors.ParserError:
+                        st.warning(f"Error reading {label} file. Skipping.")
+                        continue
+                    if label == "pTAT":
+                        for col in df.columns:
+                            if "time" in col.lower():
+                                df[col] = df[col].astype(str).str.extract(r'(\d{2}:\d{2}:\d{2})')[0]
+                    if label == "DTT":
+                        for col in df.columns:
+                            if "power" in col.lower() and "(mW)" in col:
+                                df[col] = pd.to_numeric(df[col], errors='coerce') / 1000
+                                df.rename(columns={col: col.replace("(mW)", "(W)")}, inplace=True)
+                renamed_cols = []
+                for col in df.columns:
+                    if "time" in col.lower():
+                        renamed_cols.append(f"Time ({label})")
+                    else:
+                        renamed_cols.append(f"{col} ({label})")
+                if label != "FanCK":
+                    df.columns = renamed_cols
+                uploaded_data[label].append(df)
+
 
 # === Plotly 시각화 영역 ===
 all_columns = sorted(set().union(*[
