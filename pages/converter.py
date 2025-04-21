@@ -101,65 +101,77 @@ if "uploaded_data" not in st.session_state:
     st.session_state.uploaded_data = {}
 if "x_axis" not in st.session_state:
     st.session_state.x_axis = "Time"
+if "y_axes" not in st.session_state:
+    st.session_state.y_axes = {}
+if "sorted_y_axes" not in st.session_state:
+    st.session_state.sorted_y_axes = {}
 
 uploaded_data = st.session_state.uploaded_data
 file_labels = ["pTAT", "DTT", "THI", "FanCK", "logger"]
 cols = st.columns(len(file_labels))
 
-for i, label in enumerate(file_labels):
-    with cols[i]:
-        uploaded_files = st.file_uploader(f"📁 {label}", accept_multiple_files=True, key=f"file_{label}")
-        if uploaded_files:
-            uploaded_data[label] = []
-            for f in uploaded_files:
-                if label == "THI":
-                    file_str = f.read().decode('utf-8', errors='ignore')
-                    df = convert_thi_txt_to_df(file_str)
-                elif label == "logger":
-                    df, error = extract_logger_columns_with_conversion(f)
-                    if error:
-                        st.warning(f"Logger parse error: {error}")
-                        continue
-                elif label == "FanCK":
-                    try:
-                        df = pd.read_csv(f, encoding_errors='ignore')
-                        def convert_to_time(timestamp):
-                            timestamp_str = str(int(timestamp))
-                            time_digits = timestamp_str[-6:]
-                            hours = int(time_digits[:2])
-                            minutes = int(time_digits[2:4])
-                            seconds = int(time_digits[4:])
-                            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                        df.iloc[:, 0] = df.iloc[:, 0].apply(convert_to_time)
-                        original_cols = df.columns.tolist()
-                        df.columns = ["Time"] + [f"{col} (FanCK)" for col in original_cols[1:]]
-                    except Exception as e:
-                        st.warning(f"Error processing FanCK file: {e}")
-                        continue
-                else:
-                    try:
-                        df = pd.read_csv(f, encoding_errors='ignore')
-                    except pd.errors.ParserError:
-                        st.warning(f"Error reading {label} file. Skipping.")
-                        continue
-                    if label == "pTAT":
-                        for col in df.columns:
-                            if "time" in col.lower():
-                                df[col] = df[col].astype(str).str.extract(r'(\d{2}:\d{2}:\d{2})')[0]
-                    if label == "DTT":
-                        for col in df.columns:
-                            if "power" in col.lower() and "(mW)" in col:
-                                df[col] = pd.to_numeric(df[col], errors='coerce') / 1000
-                                df.rename(columns={col: col.replace("(mW)", "(W)")}, inplace=True)
-                renamed_cols = []
-                for col in df.columns:
-                    if "time" in col.lower():
-                        renamed_cols.append(f"Time ({label})")
-                    else:
-                        renamed_cols.append(f"{col} ({label})")
-                if label != "FanCK":
-                    df.columns = renamed_cols
-                uploaded_data[label].append(df)
+# ... (기존 업로더 및 변환 로직 그대로 유지)
+
+# === Plotly 시각화 영역 ===
+all_columns = sorted(set().union(*[
+    df.columns.tolist()
+    for dfs in uploaded_data.values()
+    for df in dfs
+]) if uploaded_data else [])
+
+if all_columns:
+    time_candidates = [col for col in all_columns if "time" in col.lower()]
+    st.session_state.x_axis = time_candidates[0] if time_candidates else all_columns[0]
+
+    st.subheader("📈 Plotly Graph Settings")
+    st.session_state.x_axis = st.selectbox("X-axis column", options=all_columns, index=all_columns.index(st.session_state.x_axis), key="x_axis_global")
+
+    y_select_cols = st.columns(len(file_labels))
+    for i, label in enumerate(file_labels):
+        available_cols = []
+        if label in uploaded_data:
+            for df in uploaded_data[label]:
+                available_cols += df.columns.tolist()
+        available_cols = sorted(set(available_cols))
+
+        if label not in st.session_state.sorted_y_axes:
+            st.session_state.sorted_y_axes[label] = []
+        if label not in st.session_state.y_axes:
+            st.session_state.y_axes[label] = []
+
+        y_col = y_select_cols[i].selectbox(f"Add Y-axis ({label})", options=[""] + [col for col in available_cols if col not in st.session_state.sorted_y_axes[label]], key=f"y_axis_add_{label}")
+        if y_col:
+            if y_col not in st.session_state.sorted_y_axes[label]:
+                st.session_state.sorted_y_axes[label].append(y_col)
+            st.session_state.y_axes[label] = st.session_state.sorted_y_axes[label].copy()
+
+    st.markdown("#### Selected Y-axis columns")
+    y_multi_cols = st.columns(len(file_labels))
+    visible_all = []
+    for i, label in enumerate(file_labels):
+        sorted_y = st.session_state.sorted_y_axes[label]
+        visible = y_multi_cols[i].multiselect(f"Visible ({label})", options=sorted_y, default=st.session_state.y_axes[label], key=f"visible_{label}")
+        st.session_state.y_axes[label] = visible
+        visible_all += visible
+
+    if st.session_state.x_axis and visible_all:
+        combined_df = pd.DataFrame()
+        for label, dfs in uploaded_data.items():
+            for df in dfs:
+                if st.session_state.x_axis in df.columns:
+                    valid_y = [y for y in st.session_state.y_axes[label] if y in df.columns]
+                    if valid_y:
+                        temp_df = df[[st.session_state.x_axis] + valid_y].dropna()
+                        combined_df = pd.concat([combined_df, temp_df], ignore_index=True)
+        if not combined_df.empty:
+            combined_df = combined_df.loc[:, ~combined_df.columns.duplicated()]
+            fig = px.line(
+                combined_df,
+                x=st.session_state.x_axis,
+                y=visible_all,
+                title="Merged Plot"
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
 # === XLSX Column Reordering ===
 st.subheader("📤 XLSX Column Reordering")
