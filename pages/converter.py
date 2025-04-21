@@ -166,6 +166,9 @@ for i, label in enumerate(file_labels):
                         df.iloc[:, 0] = df.iloc[:, 0].apply(convert_to_time)
                         df.columns.values[0] = "Time"
 
+                        renamed_cols = ["Time"] + [f"{col} ({label})" for col in df.columns[1:]]
+                        df.columns = renamed_cols
+
                     except Exception as e:
                         st.warning(f"Error reading or processing FanCK file: {e}")
                         continue
