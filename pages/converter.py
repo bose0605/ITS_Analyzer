@@ -106,7 +106,7 @@ def extract_logger_columns_with_conversion(uploaded_file, min_val=0, max_val=75,
 # === UI ===
 top_col_right = st.columns([8, 1])
 with top_col_right[1]:
-    st.page_link("main.py", label="🏠 To Main")
+    st.page_link("main.py", label="\U0001F3E0 To Main")
 
 st.markdown("""
     <style>
@@ -153,12 +153,12 @@ for i, label in enumerate(file_labels):
                     try:
                         df = pd.read_csv(f, encoding_errors='ignore')
 
-                        # Convert 1st column to HH:MM:SS format
                         def convert_to_time(timestamp):
                             timestamp_str = str(int(timestamp))
-                            hours = int(timestamp_str[:2])
-                            minutes = int(timestamp_str[2:4])
-                            seconds = int(timestamp_str[4:])
+                            time_digits = timestamp_str[-6:]  # Use only HHMMSS part
+                            hours = int(time_digits[:2])
+                            minutes = int(time_digits[2:4])
+                            seconds = int(time_digits[4:])
                             return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
                         df.iloc[:, 0] = df.iloc[:, 0].apply(convert_to_time)
@@ -192,6 +192,9 @@ for i, label in enumerate(file_labels):
                 if label != "FanCK":
                     df.columns = renamed_cols
                 uploaded_data[label].append(df)
+
+# 나머지 시각화 및 다운로드는 이전 코드와 동일하게 이어서 사용 가능
+
 
 # === Conversion Output ===
 run_conversion = st.session_state.get("run_conversion", False)
