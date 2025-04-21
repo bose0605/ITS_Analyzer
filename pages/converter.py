@@ -155,7 +155,7 @@ for i, label in enumerate(file_labels):
 
                         def convert_to_time(timestamp):
                             timestamp_str = str(int(timestamp))
-                            time_digits = timestamp_str[-6:]  # Use only HHMMSS part
+                            time_digits = timestamp_str[-6:]
                             hours = int(time_digits[:2])
                             minutes = int(time_digits[2:4])
                             seconds = int(time_digits[4:])
@@ -193,10 +193,6 @@ for i, label in enumerate(file_labels):
                     df.columns = renamed_cols
                 uploaded_data[label].append(df)
 
-# 나머지 시각화 및 다운로드는 이전 코드와 동일하게 이어서 사용 가능
-
-
-# === Conversion Output ===
 run_conversion = st.session_state.get("run_conversion", False)
 
 if run_conversion:
@@ -281,3 +277,32 @@ if run_conversion:
         file_name="converted_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+    # ✅ 병합된 통합 파일 다운로드
+    st.subheader("📤 Merge All Logs by Time")
+
+    time_column = st.session_state.x_axis
+
+    merged_df = pd.DataFrame()
+    for label, dfs in uploaded_data.items():
+        for i, df in enumerate(dfs):
+            df_copy = df.copy()
+            if time_column in df_copy.columns:
+                df_copy = df_copy.dropna(subset=[time_column])
+                df_copy = df_copy.set_index(time_column)
+                merged_df = merged_df.join(df_copy, how="outer") if not merged_df.empty else df_copy
+
+    if not merged_df.empty:
+        merged_df = merged_df.sort_index().reset_index()
+
+        output_merged = BytesIO()
+        with pd.ExcelWriter(output_merged, engine="xlsxwriter") as writer:
+            merged_df.to_excel(writer, sheet_name="Merged_All", index=False)
+        output_merged.seek(0)
+
+        st.download_button(
+            label="📥 Download Merged File (Time-based)",
+            data=output_merged,
+            file_name="merged_all_by_time.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
