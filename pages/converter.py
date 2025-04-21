@@ -5,6 +5,7 @@ from io import BytesIO
 import plotly.express as px
 import xlsxwriter
 from streamlit_sortables import sort_items
+import pages.thi_converter as thi 
 
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
@@ -39,6 +40,16 @@ file_labels = ["pTAT", "DTT", "THI", "FanCK", "logger"]
 cols = st.columns(len(file_labels))
 uploaded_data = {}
 
+for f in uploaded_files:
+    if label == "THI":
+        file_str = f.read().decode('utf-8', errors='ignore')  # text 읽기
+        df = thi.convert_thi_txt_to_df(file_str)              # txt 파싱
+    else:
+        try:
+            df = pd.read_csv(f, encoding_errors='ignore')     # CSV 파싱
+        except pd.errors.ParserError:
+            st.warning(f"{label} 파일에서 오류 발생. 건너뜁니다.")
+
 for i, label in enumerate(file_labels):
     with cols[i]:
         st.markdown(f"<h5 style='text-align:left; margin-bottom: 0rem;'>📁 {label}</h5>", unsafe_allow_html=True)
@@ -56,10 +67,7 @@ for i, label in enumerate(file_labels):
                         if "power" in col.lower() and "(mW)" in col:
                             df[col] = pd.to_numeric(df[col], errors='coerce') / 1000
                             df.rename(columns={col: col.replace("(mW)", "(W)")}, inplace=True)
-                if label == "THI":
-                            file_str = f.read().decode('utf-8', errors='ignore')
-                            df = thi.convert_thi_txt_to_df(file_str)
-                    
+               
                 renamed_cols = []
                 for col in df.columns:
                     if "time" in col.lower():
