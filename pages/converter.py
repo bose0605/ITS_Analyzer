@@ -97,7 +97,6 @@ def extract_logger_columns_with_conversion(uploaded_file, min_val=0, max_val=75,
         selected_headers.iloc[0] = time_label
         selected_data.columns = selected_headers
 
-        # Round logger data to 1 decimal place (excluding Time column)
         for col in selected_data.columns:
             if col != time_label:
                 selected_data[col] = pd.to_numeric(selected_data[col], errors="coerce").round(1)
@@ -152,6 +151,20 @@ for i, label in enumerate(file_labels):
                     if error:
                         st.warning(f"Logger parse error: {error}")
                         continue
+                elif label == "FanCK":
+                    try:
+                        df = pd.read_csv(f, encoding_errors='ignore')
+                        def convert_to_time(timestamp):
+                            timestamp_str = str(int(timestamp))
+                            hours = int(timestamp_str[:2])
+                            minutes = int(timestamp_str[2:4])
+                            seconds = int(timestamp_str[4:])
+                            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                        first_col_name = df.columns[0]
+                        df["Time (FanCK)"] = df[first_col_name].apply(convert_to_time)
+                    except Exception as e:
+                        st.warning(f"Error reading or processing FanCK file: {e}")
+                        continue
                 else:
                     try:
                         df = pd.read_csv(f, encoding_errors='ignore')
@@ -193,7 +206,7 @@ if run_conversion:
     source_label = next((label for label, dfs in uploaded_data.items() for df in dfs if st.session_state.x_axis in df.columns), None)
     source_suffix = f"<span style='color:green; font-size:0.8rem; margin-left:10px;'>From:{source_label}</span>" if source_label else ""
     st.markdown(f"<div style='margin-bottom:0rem;'><label style='font-size:1.1rem;'>Select X-axis column {source_suffix}</label></div>", unsafe_allow_html=True)
-    st.session_state.x_axis = st.selectbox(" ", options=[""] + all_columns, index=( [""] + all_columns ).index(st.session_state.x_axis), key="x_axis_global")
+    st.session_state.x_axis = st.selectbox(" ", options=[""] + all_columns, index=([""] + all_columns).index(st.session_state.x_axis), key="x_axis_global")
 
     y_select_cols = st.columns(len(file_labels))
     for i, label in enumerate(file_labels):
