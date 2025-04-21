@@ -56,9 +56,9 @@ for i, label in enumerate(file_labels):
                         if "power" in col.lower() and "(mW)" in col:
                             df[col] = pd.to_numeric(df[col], errors='coerce') / 1000
                             df.rename(columns={col: col.replace("(mW)", "(W)")}, inplace=True)
-                 if label == "THI":
-                             file_str = f.read().decode('utf-8', errors='ignore')
-                             df = thi.convert_thi_txt_to_df(file_str)
+                if label == "THI":
+                            file_str = f.read().decode('utf-8', errors='ignore')
+                            df = thi.convert_thi_txt_to_df(file_str)
                     
                 renamed_cols = []
                 for col in df.columns:
