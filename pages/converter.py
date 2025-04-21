@@ -3,6 +3,7 @@ import pandas as pd
 from io import BytesIO
 import plotly.express as px
 import xlsxwriter
+from streamlit_sortables import sort_items
 import re
 import os
 
@@ -106,7 +107,7 @@ def extract_logger_columns_with_conversion(uploaded_file, min_val=0, max_val=75,
 # === UI ===
 top_col_right = st.columns([8, 1])
 with top_col_right[1]:
-    st.page_link("main.py", label="\U0001F3E0 To Main")
+    st.page_link("main.py", label="🏠 To Main")
 
 st.markdown("""
     <style>
@@ -267,7 +268,11 @@ if run_conversion:
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         for label, dfs in uploaded_data.items():
             for i, df in enumerate(dfs):
-                df_out = df[reorder_cols].dropna()
+                available_cols = [col for col in reorder_cols if col in df.columns]
+                if not available_cols:
+                    st.warning(f"⚠️ No matching columns in {label}_{i+1} for selected reorder columns.")
+                    continue
+                df_out = df[available_cols].dropna()
                 df_out.to_excel(writer, sheet_name=f"{label}_{i+1}", index=False)
     output.seek(0)
 
@@ -278,12 +283,10 @@ if run_conversion:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-    # ✅ 병합된 통합 파일 다운로드
     st.subheader("📤 Merge All Logs by Time")
-
     time_column = st.session_state.x_axis
-
     merged_df = pd.DataFrame()
+
     for label, dfs in uploaded_data.items():
         for i, df in enumerate(dfs):
             df_copy = df.copy()
@@ -294,7 +297,6 @@ if run_conversion:
 
     if not merged_df.empty:
         merged_df = merged_df.sort_index().reset_index()
-
         output_merged = BytesIO()
         with pd.ExcelWriter(output_merged, engine="xlsxwriter") as writer:
             merged_df.to_excel(writer, sheet_name="Merged_All", index=False)
