@@ -1,4 +1,3 @@
-# Multiselect does not reflect immediately (maybe sortables?)
 import streamlit as st
 import pandas as pd
 from io import BytesIO
@@ -6,20 +5,19 @@ import plotly.express as px
 import xlsxwriter
 from streamlit_sortables import sort_items
 import re
+import os
 
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
-# === THI converter function ===
+# === THI parser ===
 def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
     header = [
         "Count", "AC", "TM", "L0", "L1", "L2", "L3", "Fan", "ATM", "CPU",
         "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9",
         "Sa", "Sb", "Sc", "Sd", "Se", "Sf", "Time"
     ]
-
     data = []
     lines = file_content.splitlines()
-
     for line in lines:
         if re.match(r"^\s*\d+", line):
             tokens = re.split(r"\s+", line.strip())
@@ -42,13 +40,39 @@ def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
                     data.append(tokens)
             except:
                 continue
-
     if not data:
         return pd.DataFrame()
-
     df = pd.DataFrame(data, columns=header)
     df["ATM"] = df["ATM"].astype(str)
     return df
+
+# === Logger extractor ===
+def extract_logger_columns_from_uploaded_file(uploaded_file, min_val=0, max_val=75, time_label="Time"):
+    try:
+        df = pd.read_csv(uploaded_file, encoding='utf-8-sig', header=None, low_memory=False)
+        header_row = df.iloc[8]
+        time_row = df.iloc[9]
+        data = df.iloc[10:].copy()
+        time_index = list(time_row).index(time_label)
+        valid_columns = []
+        for col in data.columns:
+            if col == time_index:
+                continue
+            try:
+                col_values = pd.to_numeric(data[col], errors='coerce').dropna()
+                if not col_values.empty and col_values.between(min_val, max_val).all():
+                    valid_columns.append(col)
+            except:
+                continue
+        col_indices = [time_index] + valid_columns
+        selected_data = data.iloc[:, col_indices]
+        selected_headers = header_row[col_indices].copy()
+        selected_headers.iloc[0] = time_label
+        selected_data.columns = selected_headers
+        return selected_data
+    except Exception as e:
+        st.warning(f"Logger file format issue: {e}")
+        return pd.DataFrame()
 
 # === UI Header ===
 top_col_right = st.columns([8, 1])
@@ -70,14 +94,13 @@ st.markdown("""
 row = st.columns([6, 1])
 with row[0]:
     st.title(" Data Wrangling & Visualization UI")
-    st.subheader(":one: Drag and drop log files (single or multiple allowed)")
+    st.subheader(":one: Drag & drop log files (multiple or single)")
 with row[1]:
     st.markdown("<div style='padding-top: 2.5rem;'>", unsafe_allow_html=True)
     if st.button("▶️ Run Conversion"):
         st.session_state.run_conversion = True
     st.markdown("</div>", unsafe_allow_html=True)
 
-# === File Upload Section ===
 file_labels = ["pTAT", "DTT", "THI", "FanCK", "logger"]
 cols = st.columns(len(file_labels))
 uploaded_data = {}
@@ -89,29 +112,26 @@ for i, label in enumerate(file_labels):
         if uploaded_files:
             uploaded_data[label] = []
             for f in uploaded_files:
-                # Handle THI .txt files
                 if label == "THI":
                     file_str = f.read().decode('utf-8', errors='ignore')
                     df = convert_thi_txt_to_df(file_str)
+                elif label == "logger":
+                    df = extract_logger_columns_from_uploaded_file(f)
                 else:
                     try:
                         df = pd.read_csv(f, encoding_errors='ignore')
                     except pd.errors.ParserError:
                         st.warning(f"Error reading {label} file. Skipping.")
                         continue
-
                     if label == "pTAT":
                         for col in df.columns:
                             if "time" in col.lower():
                                 df[col] = df[col].astype(str).str.extract(r'(\d{2}:\d{2}:\d{2})')[0]
-
                     if label == "DTT":
                         for col in df.columns:
                             if "power" in col.lower() and "(mW)" in col:
                                 df[col] = pd.to_numeric(df[col], errors='coerce') / 1000
                                 df.rename(columns={col: col.replace("(mW)", "(W)")}, inplace=True)
-
-                # Rename columns with label suffix
                 renamed_cols = []
                 for col in df.columns:
                     if "time" in col.lower():
@@ -121,22 +141,19 @@ for i, label in enumerate(file_labels):
                 df.columns = renamed_cols
                 uploaded_data[label].append(df)
 
-# === Visualization and XLSX Export ===
 run_conversion = st.session_state.get("run_conversion", False)
 
 if run_conversion:
     all_columns = sorted(set().union(*[df.columns.tolist() for dfs in uploaded_data.values() for df in dfs]))
-
     if "x_axis" not in st.session_state or st.session_state.x_axis not in all_columns:
         time_candidates = [col for col in all_columns if "time" in col.lower()]
         st.session_state.x_axis = time_candidates[0] if time_candidates else all_columns[0]
-
     if "y_axes" not in st.session_state:
         st.session_state.y_axes = {}
     if "sorted_y_axes" not in st.session_state:
         st.session_state.sorted_y_axes = {}
 
-    st.subheader("📊 Plotly Chart Configuration")
+    st.subheader("📊 Plotly Graph Settings")
 
     source_label = next((label for label, dfs in uploaded_data.items() for df in dfs if st.session_state.x_axis in df.columns), None)
     source_suffix = f"<span style='color:green; font-size:0.8rem; margin-left:10px;'>From:{source_label}</span>" if source_label else ""
@@ -180,7 +197,6 @@ if run_conversion:
                     if valid_y:
                         temp_df = df[[st.session_state.x_axis] + valid_y].dropna()
                         combined_df = pd.concat([combined_df, temp_df], ignore_index=True)
-
         if not combined_df.empty:
             combined_df = combined_df.loc[:, ~combined_df.columns.duplicated()]
             valid_columns = [col for col in visible_all if col in combined_df.columns]
