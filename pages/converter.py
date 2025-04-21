@@ -1,10 +1,8 @@
-# converter.py
 import streamlit as st
 import pandas as pd
 from io import BytesIO
 import plotly.express as px
 import xlsxwriter
-from streamlit_sortables import sort_items
 import re
 import os
 
@@ -105,14 +103,14 @@ def extract_logger_columns_with_conversion(uploaded_file, min_val=0, max_val=75,
     except Exception as e:
         return None, f"Error: {e}"
 
-# === UI Setup ===
+# === UI ===
 top_col_right = st.columns([8, 1])
 with top_col_right[1]:
-    st.page_link("main.py", label="\U0001F3E0 To Main")
+    st.page_link("main.py", label="🏠 To Main")
 
 st.markdown("""
     <style>
-    html, body, [class^="css"] {
+    html, body, [class^="css"]  {
         font-family: Arial, sans-serif !important;
     }
     .stButton button {
@@ -155,7 +153,7 @@ for i, label in enumerate(file_labels):
                     try:
                         df = pd.read_csv(f, encoding_errors='ignore')
 
-                        # Convert first column to HH:MM:SS and rename it to 'Time'
+                        # Convert 1st column to HH:MM:SS format
                         def convert_to_time(timestamp):
                             timestamp_str = str(int(timestamp))
                             hours = int(timestamp_str[:2])
@@ -164,13 +162,11 @@ for i, label in enumerate(file_labels):
                             return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
                         df.iloc[:, 0] = df.iloc[:, 0].apply(convert_to_time)
-                        df.columns.values[0] = "Time"
-
-                        renamed_cols = ["Time"] + [f"{col} ({label})" for col in df.columns[1:]]
+                        original_cols = df.columns.tolist()
+                        renamed_cols = ["Time"] + [f"{col} (FanCK)" for col in original_cols[1:]]
                         df.columns = renamed_cols
-
                     except Exception as e:
-                        st.warning(f"Error reading or processing FanCK file: {e}")
+                        st.warning(f"Error processing FanCK file: {e}")
                         continue
                 else:
                     try:
@@ -193,9 +189,11 @@ for i, label in enumerate(file_labels):
                         renamed_cols.append(f"Time ({label})")
                     else:
                         renamed_cols.append(f"{col} ({label})")
-                df.columns = renamed_cols
+                if label != "FanCK":
+                    df.columns = renamed_cols
                 uploaded_data[label].append(df)
 
+# === Conversion Output ===
 run_conversion = st.session_state.get("run_conversion", False)
 
 if run_conversion:
@@ -208,7 +206,7 @@ if run_conversion:
     if "sorted_y_axes" not in st.session_state:
         st.session_state.sorted_y_axes = {}
 
-    st.subheader("\U0001F4CA Plotly Graph Settings")
+    st.subheader("📈 Plotly Graph Settings")
 
     source_label = next((label for label, dfs in uploaded_data.items() for df in dfs if st.session_state.x_axis in df.columns), None)
     source_suffix = f"<span style='color:green; font-size:0.8rem; margin-left:10px;'>From:{source_label}</span>" if source_label else ""
@@ -263,7 +261,7 @@ if run_conversion:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("\U0001F4C4 XLSX Column Reordering")
+    st.subheader("📤 XLSX Column Reordering")
     reorder_cols = [st.selectbox(f"→ Column {chr(65+i)}", all_columns, key=f"reorder_{i}") for i in range(5)]
 
     output = BytesIO()
@@ -275,7 +273,7 @@ if run_conversion:
     output.seek(0)
 
     st.download_button(
-        label="\U0001F4E5 Download as XLSX",
+        label="📥 Download as XLSX",
         data=output,
         file_name="converted_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
