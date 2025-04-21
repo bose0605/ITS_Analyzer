@@ -1,5 +1,3 @@
-# thi_converter.py
-
 import pandas as pd
 import re
 
