@@ -261,14 +261,19 @@ if run_conversion:
             st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("📤 XLSX Column Reordering")
-    reorder_cols = [st.selectbox(f"→ Column {chr(65+i)}", all_columns, key=f"reorder_{i}") for i in range(5)]
+     reorder_cols = [st.selectbox(f"→ Column {chr(65+i)}", [""] + all_columns, key=f"reorder_{i}") for i in range(5)]
+    selected_cols = [col for col in reorder_cols if col in all_columns and col != ""]
 
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         for label, dfs in uploaded_data.items():
             for i, df in enumerate(dfs):
-                df_out = df[reorder_cols].dropna()
-                df_out.to_excel(writer, sheet_name=f"{label}_{i+1}", index=False)
+                valid_cols = [col for col in selected_cols if col in df.columns]
+                if valid_cols:
+                    df_out = df[valid_cols].dropna()
+                    df_out.to_excel(writer, sheet_name=f"{label}_{i+1}", index=False)
+                else:
+                    st.warning(f"⚠️ No matching columns to export for {label}_{i+1}")
     output.seek(0)
 
     st.download_button(
