@@ -11,6 +11,7 @@ st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
 # ✅ XLSX Column Reordering with KeyError-safe logic
 st.subheader("📤 XLSX Column Reordering")
+all_columns = sorted(set().union(*[df.columns.tolist() for dfs in uploaded_data.values() for df in dfs]))
 reorder_cols = [st.selectbox(f"→ Column {chr(65+i)}", all_columns, key=f"reorder_{i}") for i in range(5)]
 
 output = BytesIO()
