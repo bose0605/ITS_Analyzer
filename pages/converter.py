@@ -96,6 +96,12 @@ def extract_logger_columns_with_conversion(uploaded_file, min_val=0, max_val=75,
         selected_headers = header_row[col_indices].copy()
         selected_headers.iloc[0] = time_label
         selected_data.columns = selected_headers
+
+        # Round logger data to 1 decimal place (excluding Time column)
+        for col in selected_data.columns:
+            if col != time_label:
+                selected_data[col] = pd.to_numeric(selected_data[col], errors="coerce").round(1)
+
         return selected_data, None
     except Exception as e:
         return None, f"Error: {e}"
