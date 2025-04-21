@@ -20,19 +20,15 @@ def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
                 if len(tokens) > 8 and tokens[7].endswith("/"):
                     tokens[7] = tokens[8]
                     del tokens[8]
-
                 if len(tokens) > 9 and "/" not in tokens[8]:
                     tokens[8] = tokens[8] + tokens[9]
                     del tokens[9]
-
                 if len(tokens) > 8:
                     tokens[8] = f"'{tokens[8]}"
-
                 if re.match(r"\d{2}:\d{2}:\d{2}$", tokens[-1]):
                     time_value = tokens[-1]
                 else:
                     time_value = ""
-
                 tokens = tokens[:27]
                 if len(tokens) == 27:
                     tokens[-1] = time_value
