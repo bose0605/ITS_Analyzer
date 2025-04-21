@@ -261,7 +261,8 @@ if run_conversion:
             st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("📤 XLSX Column Reordering")
-     reorder_cols = [st.selectbox(f"→ Column {chr(65+i)}", [""] + all_columns, key=f"reorder_{i}") for i in range(5)]
+
+    reorder_cols = [st.selectbox(f"→ Column {chr(65+i)}", [""] + all_columns, key=f"reorder_{i}") for i in range(5)]
     selected_cols = [col for col in reorder_cols if col in all_columns and col != ""]
 
     output = BytesIO()
