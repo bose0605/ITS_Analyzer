@@ -11,8 +11,17 @@ st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
 # ✅ XLSX Column Reordering with KeyError-safe logic
 st.subheader("📤 XLSX Column Reordering")
-all_columns = sorted(set().union(*[df.columns.tolist() for dfs in uploaded_data.values() for df in dfs]))
-reorder_cols = [st.selectbox(f"→ Column {chr(65+i)}", all_columns, key=f"reorder_{i}") for i in range(5)]
+all_columns = sorted(set().union(*[
+    df.columns.tolist()
+    for dfs in uploaded_data.values()
+    for df in dfs
+]) if uploaded_data else [])
+
+if all_columns:
+    reorder_cols = [st.selectbox(f"→ Column {chr(65+i)}", all_columns, key=f"reorder_{i}") for i in range(5)]
+else:
+    reorder_cols = []
+    st.warning("⚠️ No columns available for reordering. Please upload files first.")
 
 output = BytesIO()
 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
