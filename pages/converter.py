@@ -47,19 +47,33 @@ def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
     df["ATM"] = df["ATM"].astype(str)
     return df
 
-# === Logger parser ===
-def extract_logger_columns_with_conversion(uploaded_file, min_val=0, max_val=75, time_label="Time"):
-    filename = uploaded_file.name
-    file_ext = os.path.splitext(filename)[-1].lower()
+# === Logger converter + extractor ===
+def convert_to_utf8_csv(input_file):
+    filename, ext = os.path.splitext(input_file.name)
+    ext = ext.lower()
     try:
-        if file_ext == ".csv":
-            df = pd.read_csv(uploaded_file, encoding="utf-8-sig", header=None, low_memory=False)
-        elif file_ext == ".xls":
-            df = pd.read_excel(uploaded_file, engine="xlrd", header=None)
-        elif file_ext == ".xlsx":
-            df = pd.read_excel(uploaded_file, engine="openpyxl", header=None)
-        else:
-            return None, "Unsupported logger file format."
+        try:
+            first_bytes = input_file.read(3)
+            input_file.seek(0)
+            encoding = 'utf-8-sig' if first_bytes.startswith(b'\xef\xbb\xbf') else 'cp949'
+            df = pd.read_csv(input_file, encoding=encoding, low_memory=False, header=None)
+        except Exception:
+            input_file.seek(0)
+            if ext == '.xls':
+                df = pd.read_excel(input_file, engine='xlrd', header=None)
+            elif ext == '.xlsx':
+                df = pd.read_excel(input_file, engine='openpyxl', header=None)
+            else:
+                raise
+        return df
+    except Exception as e:
+        return None
+
+def extract_logger_columns_with_conversion(uploaded_file, min_val=0, max_val=75, time_label="Time"):
+    df = convert_to_utf8_csv(uploaded_file)
+    if df is None:
+        return None, "Unsupported logger file format or read error."
+    try:
         header_row = df.iloc[8]
         time_row = df.iloc[9]
         data = df.iloc[10:].copy()
