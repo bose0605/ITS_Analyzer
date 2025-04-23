@@ -70,18 +70,25 @@ split_mode = st.radio("Choose number of experiment segments", ["4 segments", "5 
 
 output_name = st.text_input("💾 Output filename (without extension)", value="Merged_result_final")
 
-if logger_file and ptat_file:
+if logger_file or ptat_file:
     if st.button("🚀 Run Analysis"):
         with tempfile.TemporaryDirectory() as tmpdir:
-            logger_path = os.path.join(tmpdir, logger_file.name)
-            ptat_path = os.path.join(tmpdir, ptat_file.name)
+            logger_path = None
+            ptat_path = None
+
             output_excel = os.path.join(tmpdir, output_name.strip() + ".xlsx")
+            
 
-            with open(logger_path, "wb") as f:
-                f.write(logger_file.read())
-            with open(ptat_path, "wb") as f:
-                f.write(ptat_file.read())
+            if logger_file:
+                logger_path = os.path.join(tmpdir, logger_file.name)
+                with open(logger_path, "wb") as f:
+                    f.write(logger_file.read())
 
+            if ptat_file:
+                ptat_path = os.path.join(tmpdir, ptat_file.name)
+                with open(ptat_path, "wb") as f:
+                    f.write(ptat_file.read())
+          
             with st.spinner("Processing..."):
                 full_logger_ptat_pipeline = pipeline_4 if split_mode == "4 segments" else pipeline_5
 
