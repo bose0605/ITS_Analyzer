@@ -149,7 +149,6 @@ except Exception as e:
 
 # ===== デフォルト縦軸列取得関数 =====
 def get_default_power_cols():
-    # 優先的に取りたい列（順番も維持）
     preferred = [
         next((col for col in df.columns if "package power" in col.lower()), None),
         next((col for col in df.columns if "ia power" in col.lower()), None),
@@ -158,21 +157,23 @@ def get_default_power_cols():
         next((col for col in df.columns if "mmio" in col.lower() and "2" in col.lower() and "watts" in col.lower()), None)
     ]
 
-    # None を除外して先に追加
-    selected = [col for col in preferred if col]
+    selected = []
+    seen = set()
+    for col in preferred:
+        if col and col not in seen:
+            selected.append(col)
+            seen.add(col)
 
-    # その他の "power" を含む列を抽出（既に入れたもの・Time列を除外）
-    existing = set(selected + [time_col])
     other_power_cols = [
         col for col in df.columns
-        if "power" in col.lower() and col not in existing
+        if "power" in col.lower() and col not in seen and col != time_col
     ]
 
-    # 補完して最大7列にする
     for col in other_power_cols:
         if len(selected) >= 7:
             break
         selected.append(col)
+        seen.add(col)
 
     return selected
 
@@ -307,10 +308,9 @@ with st.sidebar.expander("4️⃣ 第二縦軸の設定", expanded=True):
         st.session_state.secondary_y_cols = y2_remove_cols
 
 
-selected_y_cols = st.session_state.selected_y_cols
-secondary_y_cols = st.session_state.get("secondary_y_cols", []) if use_secondary_axis else []
-
 # ===== Plotlyグラフ描画 =====
+selected_y_cols = list(dict.fromkeys(st.session_state.selected_y_cols))  # 重複除去
+secondary_y_cols = list(dict.fromkeys(st.session_state.get("secondary_y_cols", []))) if use_secondary_axis else []
 if "style_map" not in st.session_state:
     st.session_state["style_map"] = {}
 
@@ -902,12 +902,28 @@ with tabs[2]:
                         dict(
                             label="凡例表示",
                             method="relayout",
-                            args=[{"showlegend": True}]
+                            args=[
+                                {
+                                    "showlegend": True,
+                                    "updatemenus[0].x": 1.0,
+                                    "updatemenus[0].xanchor": "right",
+                                    "updatemenus[0].y": 1.08,
+                                    "updatemenus[0].yanchor": "top"
+                                }
+                            ]
                         ),
                         dict(
                             label="凡例非表示",
                             method="relayout",
-                            args=[{"showlegend": False}]
+                            args=[
+                                {
+                                    "showlegend": False,
+                                    "updatemenus[0].x": 1.0,
+                                    "updatemenus[0].xanchor": "right",
+                                    "updatemenus[0].y": 1.08,
+                                    "updatemenus[0].yanchor": "top"
+                                }
+                            ]
                         )
                     ]
                 )
@@ -985,12 +1001,28 @@ with tabs[3]:
                         dict(
                             label="凡例表示",
                             method="relayout",
-                            args=[{"showlegend": True}]
+                            args=[
+                                {
+                                    "showlegend": True,
+                                    "updatemenus[0].x": 1.0,
+                                    "updatemenus[0].xanchor": "right",
+                                    "updatemenus[0].y": 1.08,
+                                    "updatemenus[0].yanchor": "top"
+                                }
+                            ]
                         ),
                         dict(
                             label="凡例非表示",
                             method="relayout",
-                            args=[{"showlegend": False}]
+                            args=[
+                                {
+                                    "showlegend": False,
+                                    "updatemenus[0].x": 1.0,
+                                    "updatemenus[0].xanchor": "right",
+                                    "updatemenus[0].y": 1.08,
+                                    "updatemenus[0].yanchor": "top"
+                                }
+                            ]
                         )
                     ]
                 )
@@ -1058,12 +1090,28 @@ with tabs[4]:
                         dict(
                             label="凡例表示",
                             method="relayout",
-                            args=[{"showlegend": True}]
+                            args=[
+                                {
+                                    "showlegend": True,
+                                    "updatemenus[0].x": 1.0,
+                                    "updatemenus[0].xanchor": "right",
+                                    "updatemenus[0].y": 1.08,
+                                    "updatemenus[0].yanchor": "top"
+                                }
+                            ]
                         ),
                         dict(
                             label="凡例非表示",
                             method="relayout",
-                            args=[{"showlegend": False}]
+                            args=[
+                                {
+                                    "showlegend": False,
+                                    "updatemenus[0].x": 1.0,
+                                    "updatemenus[0].xanchor": "right",
+                                    "updatemenus[0].y": 1.08,
+                                    "updatemenus[0].yanchor": "top"
+                                }
+                            ]
                         )
                     ]
                 )
@@ -1139,12 +1187,28 @@ with tabs[5]:
                         dict(
                             label="凡例表示",
                             method="relayout",
-                            args=[{"showlegend": True}]
+                            args=[
+                                {
+                                    "showlegend": True,
+                                    "updatemenus[0].x": 1.0,
+                                    "updatemenus[0].xanchor": "right",
+                                    "updatemenus[0].y": 1.08,
+                                    "updatemenus[0].yanchor": "top"
+                                }
+                            ]
                         ),
                         dict(
                             label="凡例非表示",
                             method="relayout",
-                            args=[{"showlegend": False}]
+                            args=[
+                                {
+                                    "showlegend": False,
+                                    "updatemenus[0].x": 1.0,
+                                    "updatemenus[0].xanchor": "right",
+                                    "updatemenus[0].y": 1.08,
+                                    "updatemenus[0].yanchor": "top"
+                                }
+                            ]
                         )
                     ]
                 )
