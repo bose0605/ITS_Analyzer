@@ -71,14 +71,17 @@ def extract_logger_columns_with_conversion(uploaded_file, min_val=0, max_val=75,
     df = convert_to_utf8_csv(uploaded_file)
     if df is None:
         return None, "Unsupported logger file format or read error."
+
     try:
         header_row = df.iloc[8]
         time_row = df.iloc[9]
         data = df.iloc[10:].copy()
+
         try:
             time_index = list(time_row).index(time_label)
         except ValueError:
             return None, "Time column not found."
+
         valid_columns = []
         for col in data.columns:
             if col == time_index:
@@ -89,19 +92,39 @@ def extract_logger_columns_with_conversion(uploaded_file, min_val=0, max_val=75,
                     valid_columns.append(col)
             except:
                 continue
+
         col_indices = [time_index] + valid_columns
         selected_data = data.iloc[:, col_indices]
         selected_headers = header_row[col_indices].copy()
         selected_headers.iloc[0] = time_label
         selected_data.columns = selected_headers
 
+        
+        selected_data = selected_data.rename(columns={time_label: "Time"})
         for col in selected_data.columns:
-            if col != time_label:
+            if col != "Time":
                 selected_data[col] = pd.to_numeric(selected_data[col], errors="coerce").round(1)
 
-        return selected_data, None
+      
+        selected_data["Time"] = pd.to_datetime(selected_data["Time"], format="%H:%M:%S", errors="coerce")
+        selected_data = selected_data.dropna(subset=["Time"]).sort_values("Time").reset_index(drop=True)
+
+    
+        df_expanded = selected_data.loc[selected_data.index.repeat(2)].reset_index(drop=True)
+        df_expanded["Time"] = df_expanded["Time"] + pd.to_timedelta(df_expanded.index % 2, unit='s')
+        df_expanded.iloc[1::2, 1:] = df_expanded.iloc[::2, 1:].values
+        df_expanded = df_expanded.sort_values("Time").reset_index(drop=True)
+
+        
+        df_expanded["Time"] = df_expanded["Time"].dt.strftime("%H:%M:%S")
+
+        return df_expanded, None
+
     except Exception as e:
         return None, f"Error: {e}"
+
+
+
 
 # === UI ===
 top_col_right = st.columns([8, 1])
@@ -202,11 +225,16 @@ for i, label in enumerate(file_labels):
                 )
 
              
-# === Merge Logic Section ===
-st.markdown("---")
-st.subheader("🔗 Time-based Log Merge (All 5 types)")
+#
 
-if st.button("🧩 Merge All Logs"):
+
+# === Conversion Output & Plotly Graph Settings ===
+# === Conversion Output & Plotly Graph Settings ===
+run_conversion = st.session_state.get("run_conversion", False)
+
+if run_conversion:
+    st.subheader("🔗 Auto Merge Logs (Triggered by ▶️ Run Conversion)")
+
     valid_uploaded = {label: dfs[0] for label, dfs in uploaded_data.items() if dfs}
 
     if len(valid_uploaded) >= 2:
@@ -218,8 +246,7 @@ if st.button("🧩 Merge All Logs"):
                             converted = pd.to_datetime(df[col], format="%H:%M:%S", errors='coerce')
                             if converted.notna().sum() > 0:
                                 df = df.copy()
-                                df[col] = converted
-                                df = df.rename(columns={col: "Time"})
+                                df["Time"] = converted
                                 return df.dropna(subset=["Time"]).sort_values("Time").reset_index(drop=True)
                         except Exception:
                             continue
@@ -243,12 +270,16 @@ if st.button("🧩 Merge All Logs"):
 
             merged_df = merged_df.sort_values("Time").reset_index(drop=True)
             merged_df["Time"] = merged_df["Time"].dt.strftime("%H:%M:%S")
-            cols = merged_df.columns.tolist()
-            cols.remove("Time")
-            merged_df = merged_df[["Time"] + cols]
 
-            st.session_state["merged_df"] = merged_df  # ✅ 세션에 저장
+            time_related_cols = [col for col in merged_df.columns if col.lower().startswith("time") and col != "Time"]
+            other_cols = [col for col in merged_df.columns if col not in ["Time"] + time_related_cols]
+            merged_df = merged_df[["Time"] + time_related_cols + other_cols]
+
+            st.session_state["merged_df"] = merged_df
             st.success("✅ Merge completed successfully!")
+
+            # ✅ run_conversion 값 리셋
+            st.session_state["run_conversion"] = False
 
             csv_merged = merged_df.to_csv(index=False, encoding="utf-8-sig")
             st.download_button(
@@ -259,14 +290,14 @@ if st.button("🧩 Merge All Logs"):
             )
 
         except Exception as e:
-            st.error(f"❌ Merge failed: {e}")
+            st.error(f"❌ Merge failed during conversion: {e}")
+            st.stop()
     else:
         st.warning("⚠️ Please upload at least one file for each of: Logger, PTAT, THI, DTT, FanCK.")
+        st.stop()
 
-# === Conversion Output & Plotly Graph Settings ===
-run_conversion = st.session_state.get("run_conversion", False)
 
-if run_conversion:
+    # === 이후 Plotly 그래프 출력 ===
     st.subheader("📈 Plotly Graph Settings")
 
     plot_mode = st.radio("Select plotting mode", ["Segment", "Merged"], horizontal=True)
@@ -275,11 +306,7 @@ if run_conversion:
         all_columns = sorted(set().union(*[df.columns.tolist() for dfs in uploaded_data.values() for df in dfs]))
     else:
         merged_df = st.session_state.get("merged_df", None)
-        if merged_df is not None:
-            all_columns = merged_df.columns.tolist()
-        else:
-            st.warning("❗ Please run 'Merge All Logs' before using Merged mode.")
-            st.stop()
+        all_columns = merged_df.columns.tolist()
 
     if not all_columns:
         st.warning("❗ No columns available for plotting.")
