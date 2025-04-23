@@ -75,9 +75,9 @@ def get_color_hex(cmap, index, total):
     return mcolors.to_hex(rgba, keep_alpha=False)
 
 
-plt.rcParams["font.family"] = "Arial"
+plt.rcParams["font.family"] = "Times New Roman"
 if "colormap_name" not in st.session_state:
-    st.session_state["colormap_name"] = "brg"
+    st.session_state["colormap_name"] = "Accent"
 
 # 🌈 虹色ライン
 st.markdown("""
@@ -120,7 +120,7 @@ section[data-testid="stSidebar"] label {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("\U0001F4CA DTT Viewer")
+st.title("\U0001F4CADTT Viewer")
 
 # ===== ファイルアップロード =====
 with st.sidebar.expander("1️⃣ CSVファイルの選択", expanded=True):
@@ -205,18 +205,16 @@ with st.sidebar.expander("2️⃣ 第一縦軸の列設定", expanded=True):
 
 
     st.markdown("### 第一縦軸 描画中の列")
-    remove_cols = st.multiselect(
+    current_selected = st.session_state.selected_y_cols.copy()
+    updated_selection = st.multiselect(
         "チェックを外すと削除",
-        options=st.session_state.selected_y_cols,
-        default=st.session_state.selected_y_cols,
+        options=current_selected,
+        default=current_selected,
         key="primary_remove_multiselect"
     )
-    st.session_state.selected_y_cols = remove_cols
-
-    priority_col = "Power-Package Power(Watts)"
-    if priority_col in st.session_state.selected_y_cols:
-        st.session_state.selected_y_cols.remove(priority_col)
-        st.session_state.selected_y_cols.insert(0, priority_col)
+    if set(updated_selection) != set(current_selected):
+        st.session_state.selected_y_cols = updated_selection
+        st.rerun()
 
 
 # ===== グラフ書式設定 + フォント + 軸範囲 + 凡例 + 第二縦軸トグル まとめてexpander =====
@@ -341,7 +339,6 @@ for i, col in enumerate(selected_y_cols):
         mode="lines+markers" if style.get("marker") else "lines",
         marker=dict(symbol=style.get("marker")) if style.get("marker") else None,
         yaxis="y1",
-        legendgroup="group1",
         showlegend=True
     ))
 
@@ -866,7 +863,31 @@ with tabs[2]:
             ticktext=["Energy saver", "Best Power Efficiency", "Balanced", "Best Performance"],
             tick0=0,
             dtick=25          # 目盛間隔を1に
-        )
+            ),
+            updatemenus=[
+                dict(
+                    type="buttons",
+                    direction="right",
+                    xanchor="right",
+                    x=1.0,
+                    yanchor="top",
+                    y=1.08,
+                    showactive=True,
+                    pad={"r": 0, "t": 0},
+                    buttons=[
+                        dict(
+                            label="凡例表示",
+                            method="relayout",
+                            args=[{"showlegend": True}]
+                        ),
+                        dict(
+                            label="凡例非表示",
+                            method="relayout",
+                            args=[{"showlegend": False}]
+                        )
+                    ]
+                )
+            ]
     )
 
         st.plotly_chart(fig_epp, use_container_width=True)
