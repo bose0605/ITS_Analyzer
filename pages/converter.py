@@ -140,7 +140,7 @@ for i, label in enumerate(file_labels):
         uploaded_files = st.file_uploader("", accept_multiple_files=True, key=f"file_{label}")
         if uploaded_files:
             uploaded_data[label] = []
-            for f in uploaded_files:
+            for idx, f in enumerate(uploaded_files):
                 if label == "THI":
                     file_str = f.read().decode('utf-8', errors='ignore')
                     df = convert_thi_txt_to_df(file_str)
@@ -155,7 +155,7 @@ for i, label in enumerate(file_labels):
 
                         def convert_to_time(timestamp):
                             timestamp_str = str(int(timestamp))
-                            time_digits = timestamp_str[-6:]
+                            time_digits = timestamp_str[-6:]  # Use only HHMMSS part
                             hours = int(time_digits[:2])
                             minutes = int(time_digits[2:4])
                             seconds = int(time_digits[4:])
@@ -175,9 +175,9 @@ for i, label in enumerate(file_labels):
                         st.warning(f"Error reading {label} file. Skipping.")
                         continue
                     if label == "pTAT":
-                        for col in df.columns:
-                            if "time" in col.lower():
-                                df[col] = df[col].astype(str).str.extract(r'(\d{2}:\d{2}:\d{2})')[0]
+                        if "Time" in df.columns:
+                            df["Time"] = df["Time"].astype(str).str.extract(r'(\d{2}:\d{2}:\d{2})')[0]
+                        df.columns = [f"Time ({label})" if col == "Time" else f"{col} ({label})" for col in df.columns]   
                     if label == "DTT":
                         for col in df.columns:
                             if "power" in col.lower() and "(mW)" in col:
@@ -185,39 +185,128 @@ for i, label in enumerate(file_labels):
                                 df.rename(columns={col: col.replace("(mW)", "(W)")}, inplace=True)
                 renamed_cols = []
                 for col in df.columns:
-                    if "time" in col.lower():
+                    if col == "Time":
                         renamed_cols.append(f"Time ({label})")
                     else:
                         renamed_cols.append(f"{col} ({label})")
-                if label != "FanCK":
+                if label != "pTAT":
                     df.columns = renamed_cols
                 uploaded_data[label].append(df)
 
+                csv = df.to_csv(index=False).encode('utf-8-sig')
+                st.download_button(
+                    label=f"📥 {label}_{idx+1} download converted file (CSV)",
+                    data=csv,
+                    file_name=f"{label}_{idx+1}_converted.csv",
+                    mime='text/csv'
+                )
+
+             
+# === Merge Logic Section ===
+st.markdown("---")
+st.subheader("🔗 Time-based Log Merge (All 5 types)")
+
+if st.button("🧩 Merge All Logs"):
+    valid_uploaded = {label: dfs[0] for label, dfs in uploaded_data.items() if dfs}
+
+    if len(valid_uploaded) >= 2:
+        try:
+            def extract_time(df):
+                for col in df.columns:
+                    if "time" in col.lower():
+                        try:
+                            converted = pd.to_datetime(df[col], format="%H:%M:%S", errors='coerce')
+                            if converted.notna().sum() > 0:
+                                df = df.copy()
+                                df[col] = converted
+                                df = df.rename(columns={col: "Time"})
+                                return df.dropna(subset=["Time"]).sort_values("Time").reset_index(drop=True)
+                        except Exception:
+                            continue
+                raise ValueError("No valid Time column found")
+
+            dfs = []
+            start_times = []
+            for label, df in valid_uploaded.items():
+                df = extract_time(df)
+                dfs.append(df)
+                start_times.append(df["Time"].iloc[0])
+
+            reference_time = min(start_times)
+            st.info(f"⏰ Reference Time: {reference_time.strftime('%H:%M:%S')}")
+
+            trimmed_dfs = [df[df["Time"] >= reference_time].copy().reset_index(drop=True) for df in dfs]
+
+            merged_df = trimmed_dfs[0]
+            for df in trimmed_dfs[1:]:
+                merged_df = pd.merge(merged_df, df, on="Time", how="outer")
+
+            merged_df = merged_df.sort_values("Time").reset_index(drop=True)
+            merged_df["Time"] = merged_df["Time"].dt.strftime("%H:%M:%S")
+            cols = merged_df.columns.tolist()
+            cols.remove("Time")
+            merged_df = merged_df[["Time"] + cols]
+
+            st.session_state["merged_df"] = merged_df  # ✅ 세션에 저장
+            st.success("✅ Merge completed successfully!")
+
+            csv_merged = merged_df.to_csv(index=False, encoding="utf-8-sig")
+            st.download_button(
+                label="📥 Download Merged CSV",
+                data=csv_merged,
+                file_name="merged_logs.csv",
+                mime="text/csv"
+            )
+
+        except Exception as e:
+            st.error(f"❌ Merge failed: {e}")
+    else:
+        st.warning("⚠️ Please upload at least one file for each of: Logger, PTAT, THI, DTT, FanCK.")
+
+# === Conversion Output & Plotly Graph Settings ===
 run_conversion = st.session_state.get("run_conversion", False)
 
 if run_conversion:
-    all_columns = sorted(set().union(*[df.columns.tolist() for dfs in uploaded_data.values() for df in dfs]))
+    st.subheader("📈 Plotly Graph Settings")
+
+    plot_mode = st.radio("Select plotting mode", ["Segment", "Merged"], horizontal=True)
+
+    if plot_mode == "Segment":
+        all_columns = sorted(set().union(*[df.columns.tolist() for dfs in uploaded_data.values() for df in dfs]))
+    else:
+        merged_df = st.session_state.get("merged_df", None)
+        if merged_df is not None:
+            all_columns = merged_df.columns.tolist()
+        else:
+            st.warning("❗ Please run 'Merge All Logs' before using Merged mode.")
+            st.stop()
+
+    if not all_columns:
+        st.warning("❗ No columns available for plotting.")
+        st.stop()
+
     if "x_axis" not in st.session_state or st.session_state.x_axis not in all_columns:
         time_candidates = [col for col in all_columns if "time" in col.lower()]
         st.session_state.x_axis = time_candidates[0] if time_candidates else all_columns[0]
+
     if "y_axes" not in st.session_state:
         st.session_state.y_axes = {}
     if "sorted_y_axes" not in st.session_state:
         st.session_state.sorted_y_axes = {}
 
-    st.subheader("📈 Plotly Graph Settings")
-
-    source_label = next((label for label, dfs in uploaded_data.items() for df in dfs if st.session_state.x_axis in df.columns), None)
-    source_suffix = f"<span style='color:green; font-size:0.8rem; margin-left:10px;'>From:{source_label}</span>" if source_label else ""
-    st.markdown(f"<div style='margin-bottom:0rem;'><label style='font-size:1.1rem;'>Select X-axis column {source_suffix}</label></div>", unsafe_allow_html=True)
-    st.session_state.x_axis = st.selectbox(" ", options=[""] + all_columns, index=([""] + all_columns).index(st.session_state.x_axis), key="x_axis_global")
+    st.markdown("#### Select X-axis column")
+    st.session_state.x_axis = st.selectbox(" ", options=all_columns, key="x_axis_global")
 
     y_select_cols = st.columns(len(file_labels))
     for i, label in enumerate(file_labels):
-        available_cols = []
-        if label in uploaded_data:
-            for df in uploaded_data[label]:
-                available_cols += df.columns.tolist()
+        if plot_mode == "Segment":
+            available_cols = []
+            if label in uploaded_data:
+                for df in uploaded_data[label]:
+                    available_cols += df.columns.tolist()
+        else:
+            available_cols = merged_df.columns.tolist()
+
         available_cols = sorted(set(available_cols))
 
         if label not in st.session_state.y_axes:
@@ -225,7 +314,11 @@ if run_conversion:
         if label not in st.session_state.sorted_y_axes:
             st.session_state.sorted_y_axes[label] = []
 
-        y_col = y_select_cols[i].selectbox(f"Add Y-axis column ({label})", options=[""] + [col for col in available_cols if col not in st.session_state.sorted_y_axes[label]], key=f"y_axis_add_{label}")
+        y_col = y_select_cols[i].selectbox(
+            f"Add Y-axis column ({label})",
+            options=[""] + [col for col in available_cols if col not in st.session_state.sorted_y_axes[label]],
+            key=f"y_axis_add_{label}"
+        )
         if y_col:
             if y_col not in st.session_state.sorted_y_axes[label]:
                 st.session_state.sorted_y_axes[label].append(y_col)
@@ -236,34 +329,47 @@ if run_conversion:
     visible_all = []
     for i, label in enumerate(file_labels):
         sorted_y = st.session_state.sorted_y_axes[label]
-        visible = y_multi_cols[i].multiselect(f"Columns to plot ({label})", options=sorted_y, default=st.session_state.y_axes[label], key=f"visible_{label}")
+        visible = y_multi_cols[i].multiselect(
+            f"Columns to plot ({label})",
+            options=sorted_y,
+            default=st.session_state.y_axes[label],
+            key=f"visible_{label}"
+        )
         st.session_state.y_axes[label] = visible
         visible_all += visible
 
     if st.session_state.x_axis and visible_all:
         combined_df = pd.DataFrame()
-        for label, dfs in uploaded_data.items():
-            for df in dfs:
-                if st.session_state.x_axis in df.columns:
-                    valid_y = [y for y in st.session_state.y_axes[label] if y in df.columns]
-                    if valid_y:
-                        temp_df = df[[st.session_state.x_axis] + valid_y].dropna()
-                        combined_df = pd.concat([combined_df, temp_df], ignore_index=True)
+
+        if plot_mode == "Segment":
+            for label, dfs in uploaded_data.items():
+                for df in dfs:
+                    if st.session_state.x_axis in df.columns:
+                        valid_y = [y for y in st.session_state.y_axes[label] if y in df.columns]
+                        if valid_y:
+                            temp_df = df[[st.session_state.x_axis] + valid_y].dropna()
+                            combined_df = pd.concat([combined_df, temp_df], ignore_index=True)
+        elif plot_mode == "Merged" and merged_df is not None:
+            valid_y = [y for y in visible_all if y in merged_df.columns]
+            if st.session_state.x_axis in merged_df.columns and valid_y:
+                combined_df = merged_df[[st.session_state.x_axis] + valid_y].dropna()
+
         if not combined_df.empty:
             combined_df = combined_df.loc[:, ~combined_df.columns.duplicated()]
-            valid_columns = [col for col in visible_all if col in combined_df.columns]
             fig = px.line(
                 combined_df,
                 x=st.session_state.x_axis,
-                y=valid_columns,
-                title="Multiselect chart"
+                y=[col for col in visible_all if col in combined_df.columns],
+                title=f"{plot_mode} Mode Chart"
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("📤 XLSX Column Reordering")
 
-    reorder_cols = [st.selectbox(f"→ Column {chr(65+i)}", [""] + all_columns, key=f"reorder_{i}") for i in range(5)]
-    selected_cols = [col for col in reorder_cols if col in all_columns and col != ""]
+#-----------------------------------------------------------------------------------
+    st.subheader("📤 XLSX Column Reordering")
+    # 중복 제거 + 유효한 컬럼만 추림
+    reorder_cols = [st.selectbox(f"→ Column {chr(65+i)}", all_columns, key=f"reorder_{i}") for i in range(5)]
+    selected_cols = list(dict.fromkeys([col for col in reorder_cols if col in all_columns and col != ""]))
 
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -275,6 +381,14 @@ if run_conversion:
                     df_out.to_excel(writer, sheet_name=f"{label}_{i+1}", index=False)
                 else:
                     st.warning(f"⚠️ No matching columns to export for {label}_{i+1}")
+
+                valid_cols = [col for col in selected_cols if col in df.columns]
+                if valid_cols:
+                    df_out = df[valid_cols].dropna()
+                    df_out.to_excel(writer, sheet_name=f"{label}_{i+1}", index=False)
+                else:
+                    st.warning(f"⚠️ No matching columns to export for {label}_{i+1}")
+        
     output.seek(0)
 
     st.download_button(
@@ -282,33 +396,4 @@ if run_conversion:
         data=output,
         file_name="converted_data.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    # ✅ 병합된 통합 파일 다운로드
-    st.subheader("📤 Merge All Logs by Time")
-
-    time_column = st.session_state.x_axis
-
-    merged_df = pd.DataFrame()
-    for label, dfs in uploaded_data.items():
-        for i, df in enumerate(dfs):
-            df_copy = df.copy()
-            if time_column in df_copy.columns:
-                df_copy = df_copy.dropna(subset=[time_column])
-                df_copy = df_copy.set_index(time_column)
-                merged_df = merged_df.join(df_copy, how="outer") if not merged_df.empty else df_copy
-
-    if not merged_df.empty:
-        merged_df = merged_df.sort_index().reset_index()
-
-        output_merged = BytesIO()
-        with pd.ExcelWriter(output_merged, engine="xlsxwriter") as writer:
-            merged_df.to_excel(writer, sheet_name="Merged_All", index=False)
-        output_merged.seek(0)
-
-        st.download_button(
-            label="📥 Download Merged File (Time-based)",
-            data=output_merged,
-            file_name="merged_all_by_time.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+    ) 
