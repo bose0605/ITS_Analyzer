@@ -1,4 +1,3 @@
-
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
@@ -34,7 +33,7 @@ def full_logger_ptat_pipeline(
                     raise
             df.to_csv(output_file, index=False, encoding='utf-8-sig')
             return output_file
-        except Exception as e:
+        except:
             return None
 
     def extract_logger_columns(input_file, min_val=0, max_val=75, time_label="Time"):
@@ -57,7 +56,7 @@ def full_logger_ptat_pipeline(
                 col_values = pd.to_numeric(data[col], errors='coerce').dropna()
                 if not col_values.empty and col_values.between(min_val, max_val).all():
                     valid_columns.append(col)
-            except Exception:
+            except:
                 continue
 
         col_indices = [time_index] + valid_columns
@@ -68,7 +67,7 @@ def full_logger_ptat_pipeline(
         selected_data.to_csv(output_file, index=False, encoding='utf-8-sig')
         return output_file, selected_headers[1:].tolist()
 
-    def merge_and_save(logger_path, ptat_path, output_excel):
+    def merge_and_save(logger_path, ptat_path):
         df_logger = pd.read_csv(logger_path, encoding='utf-8-sig')
         df_ptat = pd.read_csv(ptat_path, encoding='utf-8-sig')
 
@@ -87,12 +86,17 @@ def full_logger_ptat_pipeline(
         df_logger["Time"] = df_logger["Time"].dt.strftime("%H:%M:%S")
         df_ptat["Time"] = df_ptat["Time"].dt.strftime("%H:%M:%S")
 
-        merged_df = pd.merge(df_ptat, df_logger, on="Time", how="inner")
-        return merged_df
+        return pd.merge(df_ptat, df_logger, on="Time", how="inner")
 
     def cluster_and_export(df, excel_path):
         df["Time"] = pd.to_datetime(df["Time"], format="%H:%M:%S", errors='coerce')
         df = df.dropna(subset=["Time", "Power-Package Power(Watts)"]).reset_index(drop=True)
+        if df.empty or df[["Power-Package Power(Watts)"]].dropna().shape[0] < 5:
+            df["Experiment"] = None
+            with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+                df.to_excel(writer, sheet_name='Experiment Labeled', index=False)
+            return
+
         df["Power_Smoothed"] = df["Power-Package Power(Watts)"].rolling(10, min_periods=1).mean()
         kmeans = KMeans(n_clusters=4, random_state=42, n_init='auto')
         df["Cluster"] = kmeans.fit_predict(df[["Power_Smoothed"]])
@@ -159,19 +163,38 @@ def full_logger_ptat_pipeline(
             df.to_excel(writer, sheet_name='Full Data', index=False)
             cluster_df.to_excel(writer, sheet_name='Cluster 1 Split', index=False)
             df_with_exp.to_excel(writer, sheet_name='Experiment Labeled', index=False)
-            workbook = writer.book
-            worksheet = workbook.add_worksheet('Graph')
+            worksheet = writer.book.add_worksheet('Graph')
             worksheet.insert_image('B2', image_path)
+    logger_utf8 = convert_to_utf8_csv(logger_input_raw) if logger_input_raw else None
+    ptat_utf8 = convert_to_utf8_csv(ptat_input_raw) if ptat_input_raw else None
 
-    logger_utf8 = convert_to_utf8_csv(logger_input_raw)
-    ptat_utf8 = convert_to_utf8_csv(ptat_input_raw)
-    if not logger_utf8 or not ptat_utf8:
-        return None, []
+    if logger_utf8 and ptat_utf8:
+        logger_filtered, logger_targets = extract_logger_columns(logger_utf8)
+        if not logger_filtered:
+            return None, []
+        merged_df = merge_and_save(logger_filtered, ptat_utf8)
+        cluster_and_export(merged_df, merged_excel_output)
+        return merged_df, logger_targets
 
-    logger_filtered, logger_targets = extract_logger_columns(logger_utf8)
-    if not logger_filtered:
-        return None, []
+    elif ptat_utf8:
+        df_ptat = pd.read_csv(ptat_utf8, encoding='utf-8-sig')
+        filtered_columns = [col for col in ptat_columns if col in df_ptat.columns]
+        df_ptat = df_ptat[filtered_columns]
+        df_ptat["Time"] = df_ptat["Time"].astype(str).str.strip().str.split(":").str[:3].str.join(":")
+        df_ptat["Time"] = pd.to_datetime(df_ptat["Time"], format="%H:%M:%S", errors="coerce")
+        df_ptat["Power-Package Power(Watts)"] = pd.to_numeric(df_ptat["Power-Package Power(Watts)"], errors='coerce')
+        df_ptat = df_ptat.dropna(subset=["Time", "Power-Package Power(Watts)"]).copy()
+        df_ptat["Time"] = df_ptat["Time"].dt.strftime("%H:%M:%S")
+        cluster_and_export(df_ptat, merged_excel_output)
+        return df_ptat, []
 
-    merged_df = merge_and_save(logger_filtered, ptat_utf8, merged_excel_output)
-    cluster_and_export(merged_df, merged_excel_output)
-    return merged_df, logger_targets
+    elif logger_utf8:
+        logger_filtered, logger_targets = extract_logger_columns(logger_utf8)
+        if not logger_filtered:
+            return None, []
+        df_logger = pd.read_csv(logger_filtered, encoding='utf-8-sig')
+        with pd.ExcelWriter(merged_excel_output, engine='xlsxwriter') as writer:
+            df_logger.to_excel(writer, sheet_name='Experiment Labeled', index=False)
+        return df_logger, logger_targets
+
+    return None, []
