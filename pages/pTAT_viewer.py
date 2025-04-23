@@ -19,9 +19,9 @@ import base64
 import matplotlib.font_manager as fm
 st.set_page_config(layout="wide")
 
-# top_col_right = st.columns([8, 1])
-# with top_col_right[1]:
-#     st.page_link("main.py", label="🏠 To Main")
+top_col_right = st.columns([8, 1])
+with top_col_right[1]:
+    st.page_link("main.py", label="🏠 To Main")
 
 # def set_background(image_path: str):
 #     with open(image_path, "rb") as image_file:
@@ -50,12 +50,13 @@ def get_color_hex(cmap, index, total):
     return mcolors.to_hex(rgba, keep_alpha=False)
 
 
-plt.rcParams["font.family"] = "Arial"
-arial_fonts = [f.fname for f in fm.fontManager.ttflist if 'Arial' in f.name]
-if arial_fonts:
-    plt.rcParams["font.family"] = fm.FontProperties(fname=arial_fonts[0]).get_name()
+plt.rcParams["font.family"] = "Times New Roman"
+times_fonts = [f.fname for f in fm.fontManager.ttflist if 'Times New Roman' in f.name]
+if times_fonts:
+    plt.rcParams["font.family"] = fm.FontProperties(fname=times_fonts[0]).get_name()
 else:
-    st.warning("⚠️ Arialフォントが見つかりません。別のフォントが使われます。")
+    st.warning("⚠️ Times New Roman フォントが見つかりません。別のフォントが使われます。")
+
 if "colormap_name" not in st.session_state:
     st.session_state["colormap_name"] ="Accent"
 
@@ -148,23 +149,32 @@ except Exception as e:
 
 # ===== デフォルト縦軸列取得関数 =====
 def get_default_power_cols():
-    # 優先順位で取得
-    package_power = [col for col in df.columns if "package power" in col.lower()]
-    ia_power = [col for col in df.columns if "ia power" in col.lower()]
-    rest_package = [col for col in df.columns if "rest of package" in col.lower()]
+    # 優先的に取りたい列（順番も維持）
+    preferred = [
+        next((col for col in df.columns if "package power" in col.lower()), None),
+        next((col for col in df.columns if "ia power" in col.lower()), None),
+        next((col for col in df.columns if "rest of package" in col.lower()), None),
+        next((col for col in df.columns if "mmio" in col.lower() and "1" in col.lower() and "watts" in col.lower()), None),
+        next((col for col in df.columns if "mmio" in col.lower() and "2" in col.lower() and "watts" in col.lower()), None)
+    ]
 
-    # その他のpower列（time列とすでに入ってるもの以外）
-    existing = set(package_power + ia_power + rest_package + [time_col])
-    other_powers = [col for col in df.columns if "power" in col.lower() and col not in existing]
+    # None を除外して先に追加
+    selected = [col for col in preferred if col]
 
-    # 順に結合して最大5列まで返す
-    seen = set()
-    unique_cols = []
-    for col in (package_power + ia_power + rest_package + other_powers):
-        if col not in seen:
-            unique_cols.append(col)
-            seen.add(col)
-    return unique_cols[:5]
+    # その他の "power" を含む列を抽出（既に入れたもの・Time列を除外）
+    existing = set(selected + [time_col])
+    other_power_cols = [
+        col for col in df.columns
+        if "power" in col.lower() and col not in existing
+    ]
+
+    # 補完して最大7列にする
+    for col in other_power_cols:
+        if len(selected) >= 7:
+            break
+        selected.append(col)
+
+    return selected
 
 
 def reset_selected_y_cols():
@@ -337,7 +347,6 @@ for col in selected_y_cols:
         mode="lines+markers" if style.get("marker") else "lines",
         marker=dict(symbol=style.get("marker")) if style.get("marker") else None,
         yaxis="y1",
-        legendgroup="group1",
         showlegend=True
     ))
 
@@ -878,7 +887,31 @@ with tabs[2]:
                 overlaying='y',
                 side='right',
                 showgrid=False  # ← グリッド非表示
-            )
+            ),
+            updatemenus=[
+                dict(
+                    type="buttons",
+                    direction="right",
+                    xanchor="right",
+                    x=1.0,
+                    yanchor="top",
+                    y=1.08,
+                    showactive=True,
+                    pad={"r": 0, "t": 0},
+                    buttons=[
+                        dict(
+                            label="凡例表示",
+                            method="relayout",
+                            args=[{"showlegend": True}]
+                        ),
+                        dict(
+                            label="凡例非表示",
+                            method="relayout",
+                            args=[{"showlegend": False}]
+                        )
+                    ]
+                )
+            ]
         )
 
         st.plotly_chart(fig_ia, use_container_width=True)
@@ -937,7 +970,31 @@ with tabs[3]:
                 tickfont=dict(size=16),
                 gridcolor='rgba(0, 206, 209, 0.3)',
                 showgrid=True  # ← グリッド非表示
-            )
+            ),
+            updatemenus=[
+                dict(
+                    type="buttons",
+                    direction="right",
+                    xanchor="right",
+                    x=1.0,
+                    yanchor="top",
+                    y=1.08,
+                    showactive=True,
+                    pad={"r": 0, "t": 0},
+                    buttons=[
+                        dict(
+                            label="凡例表示",
+                            method="relayout",
+                            args=[{"showlegend": True}]
+                        ),
+                        dict(
+                            label="凡例非表示",
+                            method="relayout",
+                            args=[{"showlegend": False}]
+                        )
+                    ]
+                )
+            ]
         )
         st.plotly_chart(fig_gt, use_container_width=True)
     else:
@@ -1067,7 +1124,31 @@ with tabs[5]:
             tickmode='linear',
             tick0=0,
             dtick=1          # 目盛間隔を1に
-        )
+        ),
+            updatemenus=[
+                dict(
+                    type="buttons",
+                    direction="right",
+                    xanchor="right",
+                    x=1.0,
+                    yanchor="top",
+                    y=1.08,
+                    showactive=True,
+                    pad={"r": 0, "t": 0},
+                    buttons=[
+                        dict(
+                            label="凡例表示",
+                            method="relayout",
+                            args=[{"showlegend": True}]
+                        ),
+                        dict(
+                            label="凡例非表示",
+                            method="relayout",
+                            args=[{"showlegend": False}]
+                        )
+                    ]
+                )
+            ]
     )
 
         st.plotly_chart(fig_epp, use_container_width=True)
