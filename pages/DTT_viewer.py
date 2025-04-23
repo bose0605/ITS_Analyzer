@@ -49,20 +49,29 @@ def get_default_power_cols():
         "TCPU_PL1 Max Power Limit(W)",
         "TCPU_PL2 Limit(W)"
     ]
-
     # 列名の正規化：全体でstrip（空白削除）
     cleaned_cols = {col.strip(): col for col in df.columns}
-    available = [cleaned_cols[name] for name in preferred if name in cleaned_cols]
+    available = []
+    seen = set()
+    for name in preferred:
+        if name in cleaned_cols and cleaned_cols[name] not in seen:
+            available.append(cleaned_cols[name])
+            seen.add(cleaned_cols[name])
 
-    # 補完も対応（.lower() 比較）
+    # 補完（重複防止付き）
     if len(available) < 5:
         extra = [
             col for col in df.columns
-            if "(W)" in col and "power" in col.lower() and col not in available
+            if "(W)" in col and "power" in col.lower() and col not in seen
         ]
-        available += extra[:5 - len(available)]
+        for col in extra:
+            if len(available) >= 5:
+                break
+            available.append(col)
+            seen.add(col)
 
     return available
+
 
 
 
@@ -297,6 +306,7 @@ with st.sidebar.expander("4️⃣ 第二縦軸の設定", expanded=True):
 
 
 selected_y_cols = st.session_state.selected_y_cols
+selected_y_cols = list(dict.fromkeys(st.session_state.selected_y_cols))  # 重複除去
 secondary_y_cols = st.session_state.get("secondary_y_cols", []) if use_secondary_axis else []
 
 # ===== Plotlyグラフ描画 =====
@@ -787,12 +797,28 @@ with tabs[1]:
                         dict(
                             label="凡例表示",
                             method="relayout",
-                            args=[{"showlegend": True}]
+                            args=[
+                                {
+                                    "showlegend": True,
+                                    "updatemenus[0].x": 1.0,
+                                    "updatemenus[0].xanchor": "right",
+                                    "updatemenus[0].y": 1.08,
+                                    "updatemenus[0].yanchor": "top"
+                                }
+                            ]
                         ),
                         dict(
                             label="凡例非表示",
                             method="relayout",
-                            args=[{"showlegend": False}]
+                            args=[
+                                {
+                                    "showlegend": False,
+                                    "updatemenus[0].x": 1.0,
+                                    "updatemenus[0].xanchor": "right",
+                                    "updatemenus[0].y": 1.08,
+                                    "updatemenus[0].yanchor": "top"
+                                }
+                            ]
                         )
                     ]
                 )
@@ -878,12 +904,28 @@ with tabs[2]:
                         dict(
                             label="凡例表示",
                             method="relayout",
-                            args=[{"showlegend": True}]
+                            args=[
+                                {
+                                    "showlegend": True,
+                                    "updatemenus[0].x": 1.0,
+                                    "updatemenus[0].xanchor": "right",
+                                    "updatemenus[0].y": 1.08,
+                                    "updatemenus[0].yanchor": "top"
+                                }
+                            ]
                         ),
                         dict(
                             label="凡例非表示",
                             method="relayout",
-                            args=[{"showlegend": False}]
+                            args=[
+                                {
+                                    "showlegend": False,
+                                    "updatemenus[0].x": 1.0,
+                                    "updatemenus[0].xanchor": "right",
+                                    "updatemenus[0].y": 1.08,
+                                    "updatemenus[0].yanchor": "top"
+                                }
+                            ]
                         )
                     ]
                 )
