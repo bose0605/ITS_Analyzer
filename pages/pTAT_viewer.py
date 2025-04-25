@@ -17,6 +17,7 @@ import textwrap
 from io import StringIO
 import base64
 import matplotlib.font_manager as fm
+import random
 import xlsxwriter
 st.set_page_config(layout="wide")
 
@@ -46,10 +47,12 @@ with top_col_right[1]:
 def sanitize_key(text: str) -> str:
     return re.sub(r'\W+', '_', text)
 
-def get_color_hex(cmap, index, total):
-    rgba = cmap(index / max(total - 1, 1))
+def get_color_hex(cmap, ratio_or_idx, total=None):
+    if total is None:
+        rgba = cmap(ratio_or_idx)  # ratio_or_idxは0.0〜1.0のfloatを期待
+    else:
+        rgba = cmap(ratio_or_idx / max(total - 1, 1))
     return mcolors.to_hex(rgba, keep_alpha=False)
-
 
 plt.rcParams["font.family"] = "Times New Roman"
 times_fonts = [f.fname for f in fm.fontManager.ttflist if 'Times New Roman' in f.name]
@@ -388,25 +391,33 @@ if "style_map" not in st.session_state:
 colormap_name = st.session_state["colormap_name"]
 colormap = cm.get_cmap(colormap_name)
 all_plot_cols = selected_y_cols + secondary_y_cols
-color_map_ui = {
-    col: get_color_hex(colormap, idx, len(all_plot_cols))
-    for idx, col in enumerate(all_plot_cols)
-}
-color_map_excel = color_map_ui.copy() 
-for idx, col in enumerate(frequency_cols):
-    if col not in color_map_excel:
-        color_map_excel[col] = get_color_hex(colormap, len(color_map_excel) + idx, len(frequency_cols) + len(color_map_excel))
+color_map_ui = {}
+color_map_excel = {}
 
-# Frequency列の色
-for idx, col in enumerate(frequency_cols):
-    if col not in color_map_excel:
-        color_map_excel[col] = get_color_hex(colormap, len(color_map_excel) + idx, len(frequency_cols) + len(color_map_excel))
+# === 固定順で assigned（selected_y_cols + secondary_y_cols） ===
+plot_cols = selected_y_cols + secondary_y_cols
+for idx, col in enumerate(plot_cols):
+    color = get_color_hex(colormap, idx, len(plot_cols))
+    color_map_ui[col] = color
+    color_map_excel[col] = color
 
-# CPU温度列の色（NEW）
-for idx, col in enumerate(temp_cols):
-    if col not in color_map_excel:
-        color_map_excel[col] = get_color_hex(colormap, len(color_map_excel) + idx, len(temp_cols) + len(color_map_excel))
+# === Frequency列: ランダム色を割り当て（同じシードで両方） ===
+random.seed(42)
+rand_positions_freq = random.sample(range(100), len(frequency_cols))
+for i, col in enumerate(frequency_cols):
+    if col not in color_map_ui:
+        color = get_color_hex(colormap, rand_positions_freq[i] / 100.0)
+        color_map_ui[col] = color
+        color_map_excel[col] = color
 
+# === CPU温度列も同様にランダムで割り当て（希望があれば） ===
+random.seed(99)
+rand_positions_temp = random.sample(range(100), len(temp_cols))
+for i, col in enumerate(temp_cols):
+    if col not in color_map_ui:
+        color = get_color_hex(colormap, rand_positions_temp[i] / 100.0)
+        color_map_ui[col] = color
+        color_map_excel[col] = color
 
 style_options = {
     "直線": {"dash": None, "marker": None},
@@ -508,7 +519,12 @@ if show_avg:
         fig.add_vline(x=x_end, line=dict(dash="dot", width=5, color="blue"))
 
 layout_dict = dict(
-    title="",
+    title=dict(
+        text=f"{file}",
+        font=dict(size=22),
+        x=0.5,
+        xanchor="center"
+    ),
     xaxis=dict(title=dict(text=x_axis_title, font=dict(size=18)),tickfont=dict(size=16)),
     yaxis=dict(
         title=dict(text=y_axis_title, font=dict(size=18)),
@@ -784,8 +800,8 @@ with tabs[0]:
                 y=df[col],
                 mode='lines',
                 name=col,
-                line=dict(color=color_map_ui.get(col, get_color_hex(colormap, idx, len(frequency_cols))))
-        ))
+                line=dict(color=color_map_ui[col])  
+            ))
         if df[col].max() > 8000:
             freq_abnormal = True
             st.warning(f" {col} に8000MHz超あり", icon="⚠️")
@@ -874,7 +890,8 @@ with tabs[1]:
                 x=time_vals,
                 y=df[col],
                 mode='lines',
-                name=col
+                name=col,
+                line=dict(color=color_map_ui[col])
             ))
             if df[col].max() > 130:
                 temp_abnormal = True
