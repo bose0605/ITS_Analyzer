@@ -17,6 +17,7 @@ import textwrap
 from io import StringIO
 import base64
 import matplotlib.font_manager as fm
+import xlsxwriter
 st.set_page_config(layout="wide")
 
 top_col_right = st.columns([8, 1])
@@ -58,7 +59,7 @@ else:
     st.warning("⚠️ Times New Roman フォントが見つかりません。別のフォントが使われます。")
 
 if "colormap_name" not in st.session_state:
-    st.session_state["colormap_name"] ="Accent"
+    st.session_state["colormap_name"] ="jet"
 
 # 🌈 虹色ライン
 st.markdown("""
@@ -105,7 +106,7 @@ st.title("\U0001F4CA pTAT Viewer")
 
 # ===== ファイルアップロード =====
 with st.sidebar.expander("1️⃣ CSVファイルの選択", expanded=True):
-    uploaded_file = st.file_uploader("CSVファイルをアップロード", type="csv", accept_multiple_files=False)
+    uploaded_file = st.file_uploader("CSVファイルをアップロード", accept_multiple_files=False)
 
     if not uploaded_file:
         st.warning("CSVファイルをアップロードしてください。")
@@ -135,6 +136,65 @@ if not time_col_candidates:
     st.error("Time列が見つかりません。CSVに 'Time' 列を追加してください。")
     st.stop()
 time_col = time_col_candidates[0]
+
+#===== グラフ化のための変換コード
+def create_excel_combined_charts(df, time_col, chart_defs, color_map):
+    output = BytesIO()
+    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    worksheet = workbook.add_worksheet("Combined")
+    gray_format = workbook.add_format({'bg_color': '#DDDDDD'})
+
+    col_offset = 0  # ← 書き込み開始列
+
+    start_col = 0  # 開始列
+    chart_row = 9  # グラフは10行目（0-based indexで9）に挿入
+
+    for chart_def in chart_defs:
+        y_cols = chart_def["columns"]
+        y_title = chart_def["y_axis_title"]
+        chart_title = chart_def["title"]
+
+        # ==== 1. Header ====
+        worksheet.write(0, col_offset, time_col)
+        for idx, col in enumerate(y_cols):
+            worksheet.write(0, col_offset + idx + 1, col)
+
+        # ==== 2. Data ====
+        for row_idx in range(len(df)):
+            worksheet.write(row_idx + 1, col_offset, str(df[time_col].iloc[row_idx]))
+            for idx, col in enumerate(y_cols):
+                val = df[col].iloc[row_idx] if col in df.columns else None
+                if pd.notna(val):
+                    worksheet.write(row_idx + 1, col_offset + idx + 1, val)
+
+        # ==== 3. Chart ====
+        chart = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
+        for idx, col in enumerate(y_cols):
+            chart.add_series({
+                'name':       ['Combined', 0, col_offset + idx + 1],
+                'categories': ['Combined', 1, col_offset, len(df), col_offset],
+                'values':     ['Combined', 1, col_offset + idx + 1, len(df), col_offset + idx + 1],
+                'line':       {'color': color_map.get(col, '#000000')}
+            })
+
+        chart.set_title({'name': chart_title})
+        chart.set_x_axis({'name': time_col})
+        chart.set_y_axis({'name': y_title})
+        chart.set_legend({'position': 'bottom'})
+
+        worksheet.insert_chart(9, col_offset, chart, {"x_scale": 1.6, "y_scale": 1.5})
+
+        # ==== 4. 灰色2列を空けて塗る ====
+        for row in range(len(df) + 10):
+            worksheet.write(row, col_offset + len(y_cols) + 1, '', gray_format)
+            worksheet.write(row, col_offset + len(y_cols) + 2, '', gray_format)
+
+        col_offset += len(y_cols) + 3  # 次のセット開始位置へ
+
+
+    workbook.close()
+    output.seek(0)
+    return output
 
 # ✅ hh:mm:ss形式へ変換（pTAT形式対応）
 try:
@@ -232,7 +292,7 @@ with st.sidebar.expander("2️⃣ 第一縦軸の列設定", expanded=True):
 # ===== グラフ書式設定 + フォント + 軸範囲 + 凡例 + 第二縦軸トグル まとめてexpander =====
 with st.sidebar.expander("3️⃣ グラフ書式設定", expanded=True):
     colormap_list = sorted(plt.colormaps())
-    default_cmap = "Accent"
+    default_cmap = "jet"
     st.session_state["colormap_name"] = st.selectbox(
         "カラーマップを選択",
         colormap_list,
@@ -307,7 +367,17 @@ with st.sidebar.expander("4️⃣ 第二縦軸の設定", expanded=True):
         )
         st.session_state.secondary_y_cols = y2_remove_cols
 
-
+# === Frequency列の取得（タブ描画にもExcelにも共通で使う） ===
+frequency_cols = [col for col in df.columns if re.fullmatch(r"CPU\d+-Frequency\(MHz\)", col, flags=re.IGNORECASE)]
+# === CPU温度列の抽出（タブ描画とExcel出力で共通使用） ===
+temp_cols = [
+    col for col in df.columns
+    if (
+        (re.search(r"CPU\d+-DTS", col) or
+        (("temp" in col.lower() or "temperature" in col.lower()) and "cpu" in col.lower()))
+        and not col.startswith("TCPU")
+    )
+]
 # ===== Plotlyグラフ描画 =====
 selected_y_cols = list(dict.fromkeys(st.session_state.selected_y_cols))  # 重複除去
 secondary_y_cols = list(dict.fromkeys(st.session_state.get("secondary_y_cols", []))) if use_secondary_axis else []
@@ -318,10 +388,25 @@ if "style_map" not in st.session_state:
 colormap_name = st.session_state["colormap_name"]
 colormap = cm.get_cmap(colormap_name)
 all_plot_cols = selected_y_cols + secondary_y_cols
-color_map = {
+color_map_ui = {
     col: get_color_hex(colormap, idx, len(all_plot_cols))
     for idx, col in enumerate(all_plot_cols)
 }
+color_map_excel = color_map_ui.copy() 
+for idx, col in enumerate(frequency_cols):
+    if col not in color_map_excel:
+        color_map_excel[col] = get_color_hex(colormap, len(color_map_excel) + idx, len(frequency_cols) + len(color_map_excel))
+
+# Frequency列の色
+for idx, col in enumerate(frequency_cols):
+    if col not in color_map_excel:
+        color_map_excel[col] = get_color_hex(colormap, len(color_map_excel) + idx, len(frequency_cols) + len(color_map_excel))
+
+# CPU温度列の色（NEW）
+for idx, col in enumerate(temp_cols):
+    if col not in color_map_excel:
+        color_map_excel[col] = get_color_hex(colormap, len(color_map_excel) + idx, len(temp_cols) + len(color_map_excel))
+
 
 style_options = {
     "直線": {"dash": None, "marker": None},
@@ -332,6 +417,38 @@ style_options = {
     "ドット線": {"dash": "dot", "marker": None}
 }
 
+# ===== グラフをxlsx変換保存するためのボタン =====
+xlsx_io = create_excel_combined_charts(
+    df=df,
+    time_col=time_col,
+    chart_defs=[
+        {
+            "title": "Main Plot",
+            "columns": selected_y_cols,
+            "y_axis_title": y_axis_title
+        },
+        {
+            "title": "Frequency Plot",
+            "columns": frequency_cols,
+            "y_axis_title": "Frequency (MHz)"
+        },
+        {
+            "title": "CPU Temperature Plot",  # ← NEW
+            "columns": temp_cols,
+            "y_axis_title": "Temperature (°C)"
+        }
+    ],
+    color_map=color_map_excel
+)
+
+
+st.download_button(
+    label="📥 Main + Frequency + CPU温度 を一括XLSX出力",
+    data=xlsx_io,
+    file_name="combined_charts.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
 fig = go.Figure()
 
 for col in selected_y_cols:
@@ -341,7 +458,7 @@ for col in selected_y_cols:
         y=df[col],
         name=col,
         line=dict(
-            color=color_map[col],
+            color=color_map_ui[col],
             dash=style.get("dash")
         ),
         mode="lines+markers" if style.get("marker") else "lines",
@@ -357,8 +474,8 @@ for col in secondary_y_cols:
         y=df[col],
         name=col,
         mode="markers",
-        marker=dict(color=color_map[col], symbol="circle"),
-        line=dict(color=color_map[col]),
+        marker=dict(color=color_map_ui[col], symbol="circle"),
+        line=dict(color=color_map_ui[col]),
         yaxis="y2",
         legendgroup="group2",
         showlegend=True
@@ -657,19 +774,22 @@ with tabs[0]:
     col for col in df.columns
     if re.fullmatch(r"CPU\d+-Frequency\(MHz\)", col, flags=re.IGNORECASE)
 ]
+    
     if frequency_cols:
         fig_freq = go.Figure()
         freq_abnormal = False
-        for col in frequency_cols:
+        for idx, col in enumerate(frequency_cols):
             fig_freq.add_trace(go.Scatter(
                 x=time_vals,
                 y=df[col],
                 mode='lines',
-                name=col
-            ))
-            if df[col].max() > 8000:
-                freq_abnormal = True
-                st.warning(f" {col} に8000MHz超あり", icon="⚠️")
+                name=col,
+                line=dict(color=color_map_ui.get(col, get_color_hex(colormap, idx, len(frequency_cols))))
+        ))
+        if df[col].max() > 8000:
+            freq_abnormal = True
+            st.warning(f" {col} に8000MHz超あり", icon="⚠️")
+
 
 
         fig_freq.update_layout(
@@ -1125,15 +1245,19 @@ with tabs[4]:
 with tabs[5]:
     st.markdown(f"## {tab_headers['EPP&Mode']}")
 
-    epp_col = next((col for col in df.columns if "energy performance preference" in col.lower()), None)
+    epp_col = next(
+    (col for col in df.columns
+     if all(k in col.lower() for k in ["pcore", "performance", "preference"])),
+    None
+)
     oem_col = next((col for col in df.columns if "oem18" in col.lower()), None)
+
+    fig_epp = go.Figure()
+
+    has_data = False  # ← プロット有無の確認用フラグ
 
     if epp_col:
         df[epp_col] = df[epp_col].apply(lambda x: round(x / 2.55) if pd.notnull(x) else x)
-
-    if epp_col and oem_col:
-        fig_epp = go.Figure()
-
         fig_epp.add_trace(go.Scatter(
             x=time_vals,
             y=df[epp_col],
@@ -1142,37 +1266,44 @@ with tabs[5]:
             yaxis="y1",
             line=dict(color="purple")
         ))
+        has_data = True
 
+    if oem_col:
         fig_epp.add_trace(go.Scatter(
             x=time_vals,
             y=df[oem_col],
             mode="markers",
             name=oem_col,
-            yaxis="y2",
+            yaxis="y2" if epp_col else "y1",
             line=dict(color="green")
         ))
+        has_data = True
 
-        fig_epp.update_layout(
+    if has_data:
+        layout = dict(
             height=600,
             width=1400,
             margin=dict(l=50, r=100, t=50, b=50),
             xaxis=dict(title="Time", tickfont=dict(size=16)),
             yaxis=dict(
-            title=dict(text=epp_col, font=dict(size=16)),
-            tickfont=dict(size=14),
-            dtick=5,
-            gridcolor='rgba(200, 150, 255, 0.17)'
+                title=dict(text=epp_col if epp_col else oem_col, font=dict(size=16)),
+                tickfont=dict(size=14),
+                dtick=5,
+                gridcolor='rgba(200, 150, 255, 0.17)'
+            )
+        )
+
+        if epp_col and oem_col:
+            layout["yaxis2"] = dict(
+                title=dict(text=oem_col, font=dict(size=16)),
+                tickfont=dict(size=14),
+                overlaying='y',
+                side='right',
+                showgrid=False,
+                tickmode='linear',
+                tick0=0,
+                dtick=1
             ),
-            yaxis2=dict(
-            title=dict(text=oem_col, font=dict(size=16)),
-            tickfont=dict(size=14),
-            overlaying='y',
-            side='right',
-            showgrid=False,  # グリッド非表示
-            tickmode='linear',
-            tick0=0,
-            dtick=1          # 目盛間隔を1に
-        ),
             updatemenus=[
                 dict(
                     type="buttons",
@@ -1213,8 +1344,8 @@ with tabs[5]:
                     ]
                 )
             ]
-    )
-
+    
+        fig_epp.update_layout(**layout)
         st.plotly_chart(fig_epp, use_container_width=True)
 
         # 画像表示（DYTCテーブル）
