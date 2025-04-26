@@ -19,6 +19,7 @@ import base64
 import matplotlib.font_manager as fm
 import random
 import xlsxwriter
+import plotly.io as pio
 st.set_page_config(layout="wide")
 
 top_col_right = st.columns([8, 1])
@@ -411,7 +412,7 @@ for i, col in enumerate(frequency_cols):
         color_map_excel[col] = color
 
 # === CPU温度列も同様にランダムで割り当て（希望があれば） ===
-random.seed(99)
+random.seed(42)
 rand_positions_temp = random.sample(range(100), len(temp_cols))
 for i, col in enumerate(temp_cols):
     if col not in color_map_ui:
@@ -451,15 +452,12 @@ xlsx_io = create_excel_combined_charts(
     ],
     color_map=color_map_excel
 )
-
-
 st.download_button(
-    label="📥 Main + Frequency + CPU温度 を一括XLSX出力",
+    label="📥 To XLSX Output (with Charts)",
     data=xlsx_io,
     file_name="combined_charts.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
-
 fig = go.Figure()
 
 for col in selected_y_cols:
@@ -520,10 +518,12 @@ if show_avg:
 
 layout_dict = dict(
     title=dict(
-        text=f"{file}",
-        font=dict(size=22),
-        x=0.5,
-        xanchor="center"
+    text=f"{file}",
+    font=dict(size=18),
+    x=0.09,  # 👈 完全に左寄せ
+    xanchor="left",  # 👈 左基準にする
+    y=0.95,  # （オプション）縦位置調整（気になるなら）
+    pad=dict(t=10, b=10)  # （オプション）上と下に少しだけ余白
     ),
     xaxis=dict(title=dict(text=x_axis_title, font=dict(size=18)),tickfont=dict(size=16)),
     yaxis=dict(
@@ -533,7 +533,8 @@ layout_dict = dict(
         tickmode='linear',
         tick0=0,
         dtick=st.session_state.get("ytick_step", 5),
-        range=[0, st.session_state.get("y_max", 100)]
+        range=[0, st.session_state.get("y_max", 100)],
+        tickangle=0
     ),
     legend=dict(x=1.05, y=1, font=dict(size=st.session_state.get("legend_font", 15)), traceorder="normal"),
     margin=dict(l=50, r=100, t=50, b=50),
@@ -587,7 +588,8 @@ if st.session_state.get("use_secondary_axis", False):
         tickmode='linear',
         tick0=0,
         dtick=st.session_state.get("secondary_tick_step", 5),
-        range=[0, st.session_state.get("y2_max", 100)]
+        range=[0, st.session_state.get("y2_max", 100)],
+        showgrid=False 
     )
 fig.update_layout(**layout_dict)
 
@@ -1362,7 +1364,7 @@ with tabs[5]:
                 )
             ]
     
-        fig_epp.update_layout(**layout)
+        # fig_epp.update_layout(**layout)
         st.plotly_chart(fig_epp, use_container_width=True)
 
         # 画像表示（DYTCテーブル）
