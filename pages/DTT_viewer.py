@@ -11,6 +11,7 @@ import matplotlib.cm as cm
 import numpy as np
 import matplotlib.ticker as ticker
 from io import BytesIO
+import xlsxwriter
 import matplotlib.colors as mcolors
 import re  
 import textwrap
@@ -464,6 +465,51 @@ if st.session_state.get("use_secondary_axis", False):
 fig.update_layout(**layout_dict)
 
 st.plotly_chart(fig, use_container_width=True)
+
+def export_xlsx(df, selected_y_cols, time_vals, fig):
+    output = BytesIO()
+    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    worksheet = workbook.add_worksheet("Data")
+
+    # --- データ書き込み ---
+    header_format = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2'})
+    worksheet.write(0, 0, "Time", header_format)
+    for idx, col in enumerate(selected_y_cols):
+        worksheet.write(0, idx + 1, col, header_format)
+
+    for row_idx, (time_val, *values) in enumerate(df[[time_col] + selected_y_cols].itertuples(index=False), start=1):
+        worksheet.write(row_idx, 0, str(time_val))
+        for col_idx, value in enumerate(values):
+            worksheet.write(row_idx, col_idx + 1, value)
+
+    # --- グラフ書き込み ---
+    chart = workbook.add_chart({'type': 'line'})
+    for idx, col in enumerate(selected_y_cols):
+        chart.add_series({
+            'name':       ['Data', 0, idx + 1],
+            'categories': ['Data', 1, 0, len(df), 0],
+            'values':     ['Data', 1, idx + 1, len(df), idx + 1],
+            'line':       {'color': get_color_hex(cm.get_cmap(colormap_name), idx, len(selected_y_cols))},
+        })
+
+    chart.set_title({'name': 'Main Plot'})
+    chart.set_x_axis({'name': 'Time'})
+    chart.set_y_axis({'name': 'Value'})
+
+    worksheet.insert_chart('H2', chart)
+
+    workbook.close()
+    output.seek(0)
+    return output
+
+# --- Main Plotのあとにエクスポートセクション追加 ---
+towrite = export_xlsx(df, selected_y_cols, time_vals, fig)
+st.download_button(
+    label="📥 To XLSX Output (with Charts)",
+    data=towrite.getvalue(),
+    file_name="Charts.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
     # ===== Pyplotでの保存用チャート表示（メイン画面） =====
 st.markdown('<p style="font-size: 30px; margin-top: 0em;"><b>↓🎨For saving chart↓</b></p>', unsafe_allow_html=True)
