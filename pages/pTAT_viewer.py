@@ -142,59 +142,77 @@ if not time_col_candidates:
 time_col = time_col_candidates[0]
 
 #===== グラフ化のための変換コード
-def create_excel_combined_charts(df, time_col, chart_defs, color_map):
+def create_excel_combined_charts(df, time_col, chart_defs, color_map, secondary_cols_map=None):
     output = BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     worksheet = workbook.add_worksheet("Combined")
     gray_format = workbook.add_format({'bg_color': '#DDDDDD'})
 
-    col_offset = 0  # ← 書き込み開始列
-
-    start_col = 0  # 開始列
-    chart_row = 9  # グラフは10行目（0-based indexで9）に挿入
+    col_offset = 0
+    start_col = 0
+    chart_row = 9
 
     for chart_def in chart_defs:
         y_cols = chart_def["columns"]
         y_title = chart_def["y_axis_title"]
         chart_title = chart_def["title"]
 
+        secondary_cols = secondary_cols_map.get(chart_title, []) if secondary_cols_map else []
+
         # ==== 1. Header ====
         worksheet.write(0, col_offset, time_col)
-        for idx, col in enumerate(y_cols):
+        for idx, col in enumerate(y_cols + secondary_cols):
             worksheet.write(0, col_offset + idx + 1, col)
 
         # ==== 2. Data ====
         for row_idx in range(len(df)):
             worksheet.write(row_idx + 1, col_offset, str(df[time_col].iloc[row_idx]))
-            for idx, col in enumerate(y_cols):
+            for idx, col in enumerate(y_cols + secondary_cols):
                 val = df[col].iloc[row_idx] if col in df.columns else None
                 if pd.notna(val):
                     worksheet.write(row_idx + 1, col_offset + idx + 1, val)
 
         # ==== 3. Chart ====
         chart = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
+
         for idx, col in enumerate(y_cols):
             chart.add_series({
                 'name':       ['Combined', 0, col_offset + idx + 1],
                 'categories': ['Combined', 1, col_offset, len(df), col_offset],
                 'values':     ['Combined', 1, col_offset + idx + 1, len(df), col_offset + idx + 1],
-                'line':       {'color': color_map.get(col, '#000000')}
+                'line':       {'color': color_map.get(col, '#000000')},
+                'y2_axis': False  # 第一軸
             })
+        # ==== 第二縦軸用プロット (marker only, color synced) ====
+        for idx, col in enumerate(secondary_cols):
+            chart.add_series({
+                'name':       ['Combined', 0, col_offset + len(y_cols) + idx + 1],
+                'categories': ['Combined', 1, col_offset, len(df), col_offset],
+                'values':     ['Combined', 1, col_offset + len(y_cols) + idx + 1, len(df), col_offset + len(y_cols) + idx + 1],
+                'marker': {
+                'type': 'circle',
+                'size': 5,
+                'border': {'none': True},  # マーカー枠線なしにする（任意）
+                'fill': {'color': color_map.get(col, '#000000')}  # ✅ ここでマーカーの塗り色をPlotly同期            
+                },
+                'line': {'none': True},                 
+                'y2_axis':    True
+            })
+
 
         chart.set_title({'name': chart_title})
         chart.set_x_axis({'name': time_col})
         chart.set_y_axis({'name': y_title})
         chart.set_legend({'position': 'bottom'})
+        chart.set_y2_axis({'name': 'Secondary Axis'})
 
         worksheet.insert_chart(9, col_offset, chart, {"x_scale": 1.6, "y_scale": 1.5})
 
-        # ==== 4. 灰色2列を空けて塗る ====
         for row in range(len(df) + 10):
-            worksheet.write(row, col_offset + len(y_cols) + 1, '', gray_format)
-            worksheet.write(row, col_offset + len(y_cols) + 2, '', gray_format)
+            worksheet.write(row, col_offset + len(y_cols) + len(secondary_cols) + 1, '', gray_format)
+            worksheet.write(row, col_offset + len(y_cols) + len(secondary_cols) + 2, '', gray_format)
 
-        col_offset += len(y_cols) + 3  # 次のセット開始位置へ
-
+        col_offset += len(y_cols) + len(secondary_cols) + 3
 
     workbook.close()
     output.seek(0)
@@ -450,7 +468,10 @@ xlsx_io = create_excel_combined_charts(
             "y_axis_title": "Temperature (°C)"
         }
     ],
-    color_map=color_map_excel
+    color_map=color_map_excel,
+    secondary_cols_map={
+        "Main Plot": secondary_y_cols  # 👈 ここでMain Plotだけ第二軸列を追加指定
+    }
 )
 st.download_button(
     label="📥 To XLSX Output (with Charts)",
