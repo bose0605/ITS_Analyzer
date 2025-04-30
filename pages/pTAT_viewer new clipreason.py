@@ -63,8 +63,8 @@ st.markdown("""
   border: none;
   border-radius: 3px;
   background: linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet);
-  margin-top: 20px;
-  margin-bottom: 26px;
+  margin-top: 10px;
+  margin-bottom: 4px;
 ">
 """, unsafe_allow_html=True)
 
@@ -88,6 +88,25 @@ section[data-testid="stSidebar"] .stHeading {
 }
 </style>
 """, unsafe_allow_html=True)
+
+# st.button用css
+st.markdown("""
+<style>
+div.stDownloadButton > button {
+    background-color: crimson;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    transition: background-color 0.3s;
+}
+div.stDownloadButton > button:hover {
+    background-color: #105d96;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 st.title("\U0001F4CA pTAT Viewer")
 
@@ -548,16 +567,16 @@ for col in secondary_y_cols:
         showlegend=True
     ))
 
-# ==== 📏 平均値と垂線表示用 toggle（Expanderの代替） ====
-show_avg = st.toggle("📏 Show the average value of the selected range", value=False)
 xlsx_filename = file.replace(".csv", ".xlsx")
 st.download_button(
     label="📥 To XLSX Output (with Charts)",
-    help="You can download the xlsx data summarized view with mainplot,frequency,CPUtemp and data.",
+    # help="You can download the xlsx data summarized view with mainplot,frequency,CPUtemp and data.",
     data=xlsx_io,
     file_name=xlsx_filename,
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
+# ==== 📏 平均値と垂線表示用 toggle（Expanderの代替） ====
+show_avg = st.toggle("📏 Show the average value of the selected range", value=False)
 if show_avg:
     midpoint = len(df) // 2
     col1, col2, col3, col4 = st.columns([1, 1, 2, 2])
