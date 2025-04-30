@@ -1,7 +1,6 @@
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -10,8 +9,12 @@ import plotly.io as pio
 
 from pipeline_module_to_4 import full_logger_ptat_pipeline as pipeline_4
 from pipeline_module_to_5 import full_logger_ptat_pipeline as pipeline_5
-
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
+
+top_col_right = st.columns([8, 1])
+with top_col_right[1]:
+    st.page_link("main.py", label="🏠 To Main")
+
 # ==== タブ表示・タイトル表示 ====
 st.markdown("""
 <hr style="
@@ -19,8 +22,8 @@ st.markdown("""
   border: none;
   border-radius: 3px;
   background: linear-gradient(to right, #60a760, #9c8eb0, #d69e6a, #dad577, #335f8c, #b10c67, #039CB2);
-  margin-top: 44px;
-  margin-bottom: 40px;
+  margin-top: 10px;
+  margin-bottom: 4px;
 ">
 """, unsafe_allow_html=True)
 
@@ -35,11 +38,25 @@ button[data-baseweb="tab"] > div[data-testid="stMarkdownContainer"] > p {
 </style>
 """, unsafe_allow_html=True)
 
-top_col_left, top_col_right = st.columns([8, 1])
-with top_col_left:
-    st.title("📊 Sensor correlation analyzer")
-with top_col_right:
-    st.page_link("main.py", label="🏠 To Main")
+# st.button用css
+st.markdown("""
+<style>
+div.stDownloadButton > button {
+    background-color: crimson;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    transition: background-color 0.3s;
+}
+div.stDownloadButton > button:hover {
+    background-color: #105d96;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.title("📊 Sensor correlation analyzer")
 
 try:
     template_path = os.path.join(os.path.dirname(__file__), "../Result_template.xlsm")
@@ -49,46 +66,76 @@ except NameError:
 if os.path.exists(template_path):
     with open(template_path, "rb") as f:
         st.download_button(
-            label="📥 Download Excel Template (for Logger-PTAT)",
+            label="📥 Download XLSX Template (for Logger-PTAT)",
             data=f.read(),
             file_name="Result_template.xlsm",
-            help="Download Logger-PTAT Excel Template",
             key="template-download"
         )
 else:
     st.warning("❗ Template not found.")
 
-st.markdown("### Upload files for analysis")
+st.markdown("### 1️⃣ Upload files for analysis")
 col1, col2 = st.columns(2)
 with col1:
-    logger_file = st.file_uploader("📝 Logger File (.xls/.xlsx)", type=["xls", "xlsx"])
+    logger_file = st.file_uploader("Logger raw data", type=["xls", "xlsx"])
 with col2:
-    ptat_file = st.file_uploader("🌡 PTAT File (.csv)", type=["csv"])
+    ptat_file = st.file_uploader("pTAT raw data", type=["csv"])
 
-st.markdown("### ⚙️ Select Experiment Split Mode")
-split_mode = st.radio("Choose number of experiment segments", ["4 segments", "5 segments"], index=0)
+st.markdown("### 2️⃣ Select Experiment Split Mode")
+# 初期化フラグを使って、segment selectboxの初期化を制御
+if "segment_defaults_set" not in st.session_state:
+    st.session_state.segment_defaults_set = False
+def reset_segment_defaults():
+    if st.session_state.split_mode == "4 segments":
+        st.session_state.segment_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None"]
+    else:
+        st.session_state.segment_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "pTAT+Fur+Charging"]
+    st.session_state.segment_defaults_set = True
 
-output_name = st.text_input("💾 Output filename (without extension)", value="Merged_result_final")
+split_mode = st.radio(
+    "Choose number of experiment segments",
+    ["4 segments", "5 segments"],
+    index=0,
+    key="split_mode",
+    on_change=reset_segment_defaults
+)
 
-if logger_file or ptat_file:
+
+st.markdown("### 3️⃣ Select Segment Labels")
+segment_labels = ["1st segment", "2nd segment", "3rd segment", "4th segment", "5th segment"]
+default_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None"]
+select_options = ["None", "pTAT+Fur", "pTAT", "Fur", "Prime95", "pTAT+Fur+Charging"]
+
+# split_modeに応じて、デフォルト値を再初期化
+if not st.session_state.segment_defaults_set:
+    reset_segment_defaults()
+
+seg_cols = st.columns(5)
+selected_segments = []
+for i in range(5):
+    with seg_cols[i]:
+        selected = st.selectbox(
+            segment_labels[i],
+            options=select_options,
+            index=select_options.index(st.session_state.segment_values[i]),
+            key=f"segment_select_{i}"
+        )
+        selected_segments.append(selected)
+
+output_name = ("Merged")
+
+if logger_file and ptat_file:
     if st.button("🚀 Run Analysis"):
         with tempfile.TemporaryDirectory() as tmpdir:
-            logger_path = None
-            ptat_path = None
-
+            logger_path = os.path.join(tmpdir, logger_file.name)
+            ptat_path = os.path.join(tmpdir, ptat_file.name)
             output_excel = os.path.join(tmpdir, output_name.strip() + ".xlsx")
-            
 
-            if logger_file:
-                logger_path = os.path.join(tmpdir, logger_file.name)
-                with open(logger_path, "wb") as f:
-                    f.write(logger_file.read())
+            with open(logger_path, "wb") as f:
+                f.write(logger_file.read())
+            with open(ptat_path, "wb") as f:
+                f.write(ptat_file.read())
 
-            if ptat_file:
-                ptat_path = os.path.join(tmpdir, ptat_file.name)
-                with open(ptat_path, "wb") as f:
-                    f.write(ptat_file.read())
-          
             with st.spinner("Processing..."):
                 full_logger_ptat_pipeline = pipeline_4 if split_mode == "4 segments" else pipeline_5
 
@@ -107,7 +154,7 @@ if logger_file or ptat_file:
 
 if "excel_bytes" in st.session_state:
     st.download_button(
-        label="📥 Download Excel File",
+        label="📥 To XLSX Output",
         data=st.session_state["excel_bytes"],
         file_name=st.session_state["excel_filename"],
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -149,8 +196,19 @@ if "excel_bytes" in st.session_state:
                     show_grid = st.checkbox("🗺 Show grid", value=True)
 
                 if "Experiment" in df.columns:
-                    exp_options = df["Experiment"].dropna().unique().tolist()
-                    selected_exps = st.multiselect("Filter by Experiment", exp_options, default=exp_options)
+                    # セグメント数と選択ラベルを取得
+                    num_segments = 4 if split_mode == "4 segments" else 5
+                    effective_segments = selected_segments[:num_segments]
+                    # Experiment列のユニーク値取得（順序保持）
+                    exp_options = df["Experiment"].dropna().unique().tolist()[:num_segments]
+                    # ExperimentラベルとUIでの選択ラベルを対応づけ
+                    exp_display_map = dict(zip(exp_options, effective_segments))  # 例: {"Exp1": "pTAT+Fur", ...}
+                    # UIに表示するラベルリスト（選択肢）
+                    exp_display_labels = [exp_display_map[exp] for exp in exp_options]
+                    # ユーザーに表示されるselectは変換名（選択ラベル）、選択された値を元のExperimentに戻す
+                    selected_display_labels = st.multiselect("Filter by Experiment", exp_display_labels, default=exp_display_labels)
+                    selected_exps = [exp for exp, label in exp_display_map.items() if label in selected_display_labels]
+                    # dfをフィルター
                     df_filtered = df[df["Experiment"].isin(selected_exps)]
                 else:
                     df_filtered = df.copy()
@@ -160,31 +218,28 @@ if "excel_bytes" in st.session_state:
                     "TAT": "green",
                     "Fur": "orange",
                     "Prime95": "red",
-                    "Charging": "purple"
+                    "Charging": "#ee82ee"
                 }
 
+                num_segments = 4 if split_mode == "4 segments" else 5
+                effective_segments = selected_segments[:num_segments]
                 fig = go.Figure()
 
                 if "Experiment" in df.columns:
-                    for exp in df_filtered["Experiment"].unique():
+                    unique_exps = df_filtered["Experiment"].dropna().unique().tolist()
+
+                    for i, exp in enumerate(unique_exps):
+                        if i >= len(effective_segments):
+                            break  # セグメント数を超えたら無視
                         exp_df = df_filtered[df_filtered["Experiment"] == exp]
                         fig.add_trace(go.Scatter(
                             x=exp_df[col_x],
                             y=exp_df[col_y],
                             mode="markers",
-                            name=exp,
+                            name=effective_segments[i],  # 凡例を選択に同期
                             marker=dict(color=color_map.get(exp, "gray")),
                             opacity=point_opacity
                         ))
-                else:
-                    fig.add_trace(go.Scatter(
-                        x=df_filtered[col_x],
-                        y=df_filtered[col_y],
-                        mode="markers",
-                        name=f"{col_y} vs {col_x}",
-                        marker=dict(color="crimson"),
-                        opacity=point_opacity
-                    ))
 
                 fig.add_vline(
                     x=bal_val,
@@ -205,7 +260,7 @@ if "excel_bytes" in st.session_state:
                         x=[25, 60],
                         y=[25, 60],
                         mode="lines",
-                        line=dict(color="black"),
+                        line=dict(color="cyan"),
                         name="y = x"
                     ))
 
@@ -218,16 +273,14 @@ if "excel_bytes" in st.session_state:
                     template="simple_white",
                     title=""
                 )
-
                 fig.update_xaxes(showgrid=show_grid)
                 fig.update_yaxes(showgrid=show_grid)
-
                 st.plotly_chart(fig, use_container_width=True)
-                try:
-                    png_bytes = pio.to_image(fig, format="png")
-                    st.download_button("📥 Download Chart as PNG", data=png_bytes, file_name="chart.png", mime="image/png")
-                except Exception:
-                    st.warning("⚠️ Install 'kaleido' for PNG export.")
+                # try:
+                #     png_bytes = pio.to_image(fig, format="png")
+                #     st.download_button("📥 Download Chart as PNG", data=png_bytes, file_name="chart.png", mime="image/png")
+                # except Exception:
+                #     st.warning("⚠️ Install 'kaleido' for PNG export.")
 
                 with st.expander("📋 View Raw Data"):
                     cols_to_show = [col_x, col_y]
