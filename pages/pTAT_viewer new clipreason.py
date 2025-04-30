@@ -95,14 +95,6 @@ section[data-testid="stSidebar"] .stHeading {
   color: goldenrod;
   font-size: 1.2rem;
 }
-section[data-testid="stSidebar"] .stMarkdown p {
-  color: white;
-  font-size: 1.05rem;
-}
-section[data-testid="stSidebar"] label {
-  color: white !important;
-  font-size: 1.05rem;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -212,6 +204,39 @@ def create_excel_combined_charts(df, time_col, chart_defs, color_map, secondary_
 
         col_offset += len(y_cols) + len(secondary_cols) + 3
 
+            # ===== ✅ tabs[2]以降のデータ列（グラフ無し）を追加配置 =====
+    additional_groups = [
+        {
+            "label": "IA Clip Reason",
+            "columns": [col for col in df.columns if "ia clip reason" in col.lower()]
+        },
+        {
+            "label": "GT Clip Reason",
+            "columns": [col for col in df.columns if "gt clip reason" in col.lower()]
+        },
+        {
+            "label": "Phidget Temp",
+            "columns": [col for col in df.columns if "phidget" in col.lower() and "degree" in col.lower()]
+        },
+        {
+            "label": "EPP and Mode",
+            "columns": [col for col in df.columns if "performance preference" in col.lower() or "oem18" in col.lower()]
+        }
+    ]
+    # ✅ すべての追加列を1ブロックとして並べる（ヘッダー1行、以降データ）
+    worksheet.write(0, col_offset, time_col)
+    flat_cols = []
+    for group in additional_groups:
+        flat_cols.extend(group["columns"])
+    for idx, col in enumerate(flat_cols):
+        worksheet.write(0, col_offset + idx + 1, col)
+    for row_idx in range(len(df)):
+        worksheet.write(row_idx + 1, col_offset, str(df[time_col].iloc[row_idx]))
+        for idx, col in enumerate(flat_cols):
+            if col in df.columns:
+                val = df[col].iloc[row_idx]
+                if pd.notna(val):
+                    worksheet.write(row_idx + 1, col_offset + idx + 1, val)
     workbook.close()
     output.seek(0)
     return output
@@ -510,7 +535,7 @@ xlsx_filename = file.replace(".csv", ".xlsx")
 st.download_button(
     label="📥 To XLSX Output (with Charts)",
     data=xlsx_io,
-    file_name="xlsx_filename.xlsx",
+    file_name=xlsx_filename,
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 if show_avg:
@@ -986,7 +1011,7 @@ with tabs[1]:
 
 def update_layout(fig):
     fig.update_layout(
-            height=600, width=1400,
+            height=600, width=1400,bargap=0,barmode="stack",
             margin=dict(l=50, r=100, t=50, b=50),
             xaxis=dict(
                 title=dict(text="Time", font=dict(size=18)),
