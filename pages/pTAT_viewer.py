@@ -575,23 +575,22 @@ st.download_button(
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 # ==== 📏 平均値と垂線表示用 toggle（Expanderの代替） ====
-show_avg = st.toggle("📏 任意区間の平均値を表示", value=False)
-
+show_avg = st.toggle("📏 Show the average value of the selected range", value=False)
 if show_avg:
     midpoint = len(df) // 2
     col1, col2, col3, col4 = st.columns([1, 1, 2, 2])
     with col1:
-        idx_start = st.number_input("開始インデックス", min_value=0, max_value=len(df)-1, value=0, step=1, key="idx_start")
+        idx_start = st.number_input("Start index", min_value=0, max_value=len(df)-1, value=0, step=1, key="idx_start")
     with col2:
-        idx_end = st.number_input("終了インデックス", min_value=0, max_value=len(df)-1, value=midpoint, step=1, key="idx_end")
+        idx_end = st.number_input("End index", min_value=0, max_value=len(df)-1, value=midpoint, step=1, key="idx_end")
     with col3:
         available_avg_cols = st.session_state.selected_y_cols or df.select_dtypes(include='number').columns.tolist()
-        avg_target_col = st.selectbox("対象データ列", options=available_avg_cols, index=0, key="avg_col")
+        avg_target_col = st.selectbox("Target column", options=available_avg_cols, index=0, key="avg_col")
 
     if idx_start < idx_end and avg_target_col in df.columns:
         avg_val = df[avg_target_col].iloc[idx_start:idx_end+1].mean()
         with col4:
-            st.success(f"📏 {avg_target_col} の {idx_start}〜{idx_end} の平均値: {avg_val:.2f}")
+            st.success(f"📏 {avg_target_col} : {idx_start}〜{idx_end} Average: {avg_val:.2f}")
 
         x_start = time_vals.iloc[idx_start] if hasattr(time_vals, "iloc") else time_vals[idx_start]
         x_end = time_vals.iloc[idx_end] if hasattr(time_vals, "iloc") else time_vals[idx_end]
@@ -636,7 +635,7 @@ layout_dict = dict(
             pad={"r": 0, "t": 0},
             buttons=[
                 dict(
-                    label="凡例表示",
+                    label="Legend on",
                     method="relayout",
                     args=[{
                         "showlegend": True,
@@ -647,7 +646,7 @@ layout_dict = dict(
                     }]
                 ),
                 dict(
-                    label="凡例非表示",
+                    label="Legend off",
                     method="relayout",
                     args=[{
                         "showlegend": False,
@@ -661,7 +660,6 @@ layout_dict = dict(
         )
     ]
 )
-
 # 第二縦軸を使用する場合だけ追加
 if st.session_state.get("use_secondary_axis", False):
     layout_dict["yaxis2"] = dict(
@@ -682,7 +680,7 @@ st.plotly_chart(fig, use_container_width=True)
     # ===== Pyplotでの保存用チャート表示（メイン画面） =====
 st.markdown('<p style="font-size: 30px; margin-top: 0em;"><b>↓🎨For saving chart↓</b></p>', unsafe_allow_html=True)
 
-with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
+with st.expander("🎨 Matplotlib chart", expanded=False):
 
     colormap_name = st.session_state["colormap_name"]
     colormap = plt.get_cmap(colormap_name)
@@ -702,7 +700,7 @@ with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
                 safe_key = sanitize_key(f"style1_{i+j}_{col}")
                 with row_cols[j]:
                     st.session_state["style_map"][col] = st.selectbox(
-                        f"{col} の形式", list(style_options.keys()), index=0, key=safe_key)
+                        f"{col} style", list(style_options.keys()), index=0, key=safe_key)
 
     for i in range(0, len(secondary_y_cols), 5):
             row_cols = st.columns(5)
@@ -710,10 +708,10 @@ with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
                 safe_key = sanitize_key(f"style2_{i+j}_{col}")
                 with row_cols[j]:
                     st.session_state["style_map"][col] = st.selectbox(
-                        f"{col} の形式（第二縦軸）", list(style_options.keys()), index=2, key=safe_key)
+                        f"{col} style（2nd Y-axis）", list(style_options.keys()), index=2, key=safe_key)
 
    
-    st.write({"第一縦軸": selected_y_cols, "第二縦軸": secondary_y_cols})
+    st.write({"1st Y-axis": selected_y_cols, "2nd Y-axis": secondary_y_cols})
 
     try:
         if "color_map" not in st.session_state:
@@ -724,7 +722,7 @@ with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
 
         for i, col in enumerate(selected_y_cols):
             color = st.session_state.color_map.get(col, colormap(i / max(n_total-1, 1)))
-            style = style_options[st.session_state["style_map"].get(col, "直線")]
+            style = style_options[st.session_state["style_map"].get(col, "line")]
             ax.plot(time_vals, df[col], label=col, linewidth=1.5, linestyle=style["linestyle"], marker=style["marker"], color=color)
 
         ax2 = None
@@ -732,7 +730,7 @@ with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
             ax2 = ax.twinx()
             for j, col in enumerate(secondary_y_cols):
                 color = st.session_state.color_map.get(col, colormap((len(selected_y_cols)+j) / max(n_total-1, 1)))
-                style = style_options[st.session_state["style_map"].get(col, "点のみ")]
+                style = style_options[st.session_state["style_map"].get(col, "only markers")]
                 ax2.plot(time_vals, df[col], label=col, linewidth=1.5, linestyle=style["linestyle"], marker=style["marker"], markersize=1.7,color=color)
             ax2.set_ylabel(secondary_y_axis_title, fontsize=label_font, labelpad=2)
             ax2.tick_params(axis='y', labelsize=tick_font)
@@ -808,7 +806,7 @@ with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
             ax.set_ylim(y_min, y_max)
             ax.set_yticks(yticks)
         else:
-            st.warning("第一縦軸の目盛が多すぎるため、自動スケーリングに切り替えました。")
+            st.warning("Turned auto scale due to much tickes.")
             ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=10))
 
         ax.tick_params(axis='x', labelsize=tick_font)
@@ -816,7 +814,7 @@ with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
 
         st.pyplot(fig)
     except Exception as e:
-        st.error(f"グラフ描画中にエラーが発生しました: {e}")
+        st.error(f"Error: {e}")
 
 # ==== タブのラベルと対応するヘッダー ====
 tab_labels = ["Frequency", "CPU temp", "IA-clip reason","GT-clip reason", "Phidget","EPP&Mode"]
@@ -896,7 +894,7 @@ with tabs[0]:
 
         if df[col].max() > 8000:
             freq_abnormal = True
-            st.warning(f" {col} に8000MHz超あり", icon="⚠️")
+            st.warning(f" {col} Existence of over 8000MHz", icon="⚠️")
 
 
 
@@ -929,7 +927,7 @@ with tabs[0]:
                     pad={"r": 0, "t": 0},
                     buttons=[
                         dict(
-                            label="凡例表示",
+                            label="Legend on",
                             method="relayout",
                             args=[
                                 {
@@ -942,7 +940,7 @@ with tabs[0]:
                             ]
                         ),
                         dict(
-                            label="凡例非表示",
+                            label="Legend off",
                             method="relayout",
                             args=[
                                 {
@@ -961,7 +959,7 @@ with tabs[0]:
 
         st.plotly_chart(fig_freq, use_container_width=True)
     else:
-        st.info("CPUのFrequencyに関わる列が見つかりませんでした。")
+        st.info("No found the column")
 with tabs[1]:
     st.markdown(f"## {tab_headers['CPU temp']}")
 
@@ -992,7 +990,9 @@ with tabs[1]:
 
             if df[col].max() > 130:
                 temp_abnormal = True
-                st.warning(f" {col} に130℃超あり", icon="⚠️")
+                st.warning(f" {col} over 130deg", icon="⚠️")
+
+
 
         fig_temp.update_layout(
             xaxis_title="Time",
@@ -1023,7 +1023,7 @@ with tabs[1]:
                     pad={"r": 0, "t": 0},
                     buttons=[
                         dict(
-                            label="凡例表示",
+                            label="Legend on",
                             method="relayout",
                             args=[
                                 {
@@ -1036,7 +1036,7 @@ with tabs[1]:
                             ]
                         ),
                         dict(
-                            label="凡例非表示",
+                            label="Legend off",
                             method="relayout",
                             args=[
                                 {
@@ -1055,8 +1055,7 @@ with tabs[1]:
 
         st.plotly_chart(fig_temp, use_container_width=True)
     else:
-        st.info("CPU温度に関する列（CPUxx-DTS）が見つかりませんでした。")
-
+        st.info("No found")
 
 with tabs[2]:
     st.markdown(f"## {tab_headers['IA-clip reason']}")
@@ -1132,7 +1131,7 @@ with tabs[2]:
                     pad={"r": 0, "t": 0},
                     buttons=[
                         dict(
-                            label="凡例表示",
+                            label="Legend on",
                             method="relayout",
                             args=[
                                 {
@@ -1145,7 +1144,7 @@ with tabs[2]:
                             ]
                         ),
                         dict(
-                            label="凡例非表示",
+                            label="Legend off",
                             method="relayout",
                             args=[
                                 {
@@ -1163,7 +1162,7 @@ with tabs[2]:
         )
         st.plotly_chart(fig_ia, use_container_width=True)
     else:
-        st.info("IA Clip Reason列が見つかりませんでした。")
+        st.info("No found")
 
 with tabs[3]:
     st.markdown(f"## {tab_headers['GT-clip reason']}")
@@ -1229,7 +1228,7 @@ with tabs[3]:
                     pad={"r": 0, "t": 0},
                     buttons=[
                         dict(
-                            label="凡例表示",
+                            label="Legend on",
                             method="relayout",
                             args=[
                                 {
@@ -1242,7 +1241,7 @@ with tabs[3]:
                             ]
                         ),
                         dict(
-                            label="凡例非表示",
+                            label="Legend off",
                             method="relayout",
                             args=[
                                 {
@@ -1260,7 +1259,7 @@ with tabs[3]:
         )
         st.plotly_chart(fig_gt, use_container_width=True)
     else:
-        st.info("GT Clip Reason列が見つかりませんでした。")
+        st.info("No found")
 
 # === 追加: Phidgetタブ ===
 with tabs[4]:
@@ -1285,7 +1284,7 @@ with tabs[4]:
             ))
             if (y_data < 0).any() or (y_data > 100).any():  # ← ✅ 数値に変換した結果で比較
                 phidget_abnormal = True
-                st.warning(f"{col} に0℃未満または100℃超のデータがあります", icon="⚠️")
+                st.warning(f"{col} found below 0deg or over 100deg", icon="⚠️")
 
         yaxis_range = [0, 100] if phidget_abnormal else None
 
@@ -1318,7 +1317,7 @@ with tabs[4]:
                     pad={"r": 0, "t": 0},
                     buttons=[
                         dict(
-                            label="凡例表示",
+                            label="Legend on",
                             method="relayout",
                             args=[
                                 {
@@ -1331,7 +1330,7 @@ with tabs[4]:
                             ]
                         ),
                         dict(
-                            label="凡例非表示",
+                            label="Legend off",
                             method="relayout",
                             args=[
                                 {
@@ -1350,7 +1349,7 @@ with tabs[4]:
 
         st.plotly_chart(fig_phidget, use_container_width=True)
     else:
-        st.info("Phidget温度に関する列が見つかりませんでした。")
+        st.info("No found")
 
 with tabs[5]:
     st.markdown(f"## {tab_headers['EPP&Mode']}")
@@ -1426,7 +1425,7 @@ with tabs[5]:
                     pad={"r": 0, "t": 0},
                     buttons=[
                         dict(
-                            label="凡例表示",
+                            label="Legend on",
                             method="relayout",
                             args=[
                                 {
@@ -1439,7 +1438,7 @@ with tabs[5]:
                             ]
                         ),
                         dict(
-                            label="凡例非表示",
+                            label="Legend off",
                             method="relayout",
                             args=[
                                 {
@@ -1494,7 +1493,7 @@ with tabs[5]:
         st.markdown(dytc_html_table, unsafe_allow_html=True)
 
     else:
-        st.warning("必要な列（EPP または oem18）が見つかりません。")
+        st.warning("No found")
 
 # ===== CoreType表示（段組＋カラーマップ対応）を成功風UIで表示 =====
 core_type_map = {}
