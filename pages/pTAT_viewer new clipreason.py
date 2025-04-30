@@ -500,14 +500,13 @@ for col in temp_cols:
         color_map_ui[col] = temp_color_map[col]
         color_map_excel[col] = temp_color_map[col]
 
-
 style_options = {
-    "直線": {"dash": None, "marker": None},
-    "点線": {"dash": "dash", "marker": None},
-    "点のみ": {"dash": None, "marker": "circle"},
-    "線＋点": {"dash": None, "marker": "circle"},
-    "破線＋点": {"dash": "dash", "marker": "circle"},
-    "ドット線": {"dash": "dot", "marker": None}
+    "lines": {"dash": None, "marker": None},
+    "dotted": {"dash": "dash", "marker": None},
+    "markers": {"dash": None, "marker": "circle"},
+    "line＋marker": {"dash": None, "marker": "circle"},
+    "dashed＋marker": {"dash": "dash", "marker": "circle"},
+    "dotted": {"dash": "dot", "marker": None}
 }
 
 # ===== グラフをxlsx変換保存するためのボタン =====
@@ -676,7 +675,6 @@ if st.session_state.get("use_secondary_axis", False):
         showgrid=False 
     )
 fig.update_layout(**layout_dict)
-
 st.plotly_chart(fig, use_container_width=True)
 
     # ===== Pyplotでの保存用チャート表示（メイン画面） =====
@@ -688,12 +686,12 @@ with st.expander("🎨 Matplotlib chart", expanded=False):
     colormap = plt.get_cmap(colormap_name)
 
     style_options = {
-        "直線": {"linestyle": "-", "marker": ""},
-        "点線": {"linestyle": "--", "marker": ""},
-        "点のみ": {"linestyle": "", "marker": "o"},
-        "線＋点": {"linestyle": "-", "marker": "o"},
-        "破線＋点": {"linestyle": "--", "marker": "o"},
-        "ドット線": {"linestyle": ":", "marker": ""}
+        "-": {"linestyle": "-", "marker": ""},
+        "--": {"linestyle": "--", "marker": ""},
+        ".": {"linestyle": "", "marker": "o"},
+        "-＋.": {"linestyle": "-", "marker": "o"},
+        "--＋.": {"linestyle": "--", "marker": "o"},
+        ".": {"linestyle": ":", "marker": ""}
     }
 
     for i in range(0, len(selected_y_cols), 5):
