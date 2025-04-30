@@ -636,7 +636,7 @@ layout_dict = dict(
             pad={"r": 0, "t": 0},
             buttons=[
                 dict(
-                    label="legend on",
+                    label="Legend on",
                     method="relayout",
                     args=[{
                         "showlegend": True,
@@ -647,7 +647,7 @@ layout_dict = dict(
                     }]
                 ),
                 dict(
-                    label="legend off",
+                    label="Legend off",
                     method="relayout",
                     args=[{
                         "showlegend": False,
@@ -702,7 +702,7 @@ with st.expander("🎨 Matplotlib chart", expanded=False):
                 safe_key = sanitize_key(f"style1_{i+j}_{col}")
                 with row_cols[j]:
                     st.session_state["style_map"][col] = st.selectbox(
-                        f"{col} の形式", list(style_options.keys()), index=0, key=safe_key)
+                        f"{col} style", list(style_options.keys()), index=0, key=safe_key)
 
     for i in range(0, len(secondary_y_cols), 5):
             row_cols = st.columns(5)
@@ -710,7 +710,7 @@ with st.expander("🎨 Matplotlib chart", expanded=False):
                 safe_key = sanitize_key(f"style2_{i+j}_{col}")
                 with row_cols[j]:
                     st.session_state["style_map"][col] = st.selectbox(
-                        f"{col} の形式（第二縦軸）", list(style_options.keys()), index=2, key=safe_key)
+                        f"{col} style（2nd Y-axis）", list(style_options.keys()), index=2, key=safe_key)
 
     st.write({"1st Y-axis": selected_y_cols, "2nd Y-axis": secondary_y_cols})
 
