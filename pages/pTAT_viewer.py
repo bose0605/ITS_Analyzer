@@ -492,21 +492,21 @@ for col in frequency_cols:
         color_map_ui[col] = freq_color_map[col]
         color_map_excel[col] = freq_color_map[col]
 
+style_options = {
+    "-": {"linestyle": "-", "marker": ""},
+    "--": {"linestyle": "--", "marker": ""},
+    ".": {"linestyle": "", "marker": "o"},
+    "-＋.": {"linestyle": "-", "marker": "o"},
+    "--＋.": {"linestyle": "--", "marker": "o"},
+    ".": {"linestyle": ":", "marker": ""}
+}
+
 # CPU温度列用カラー
 temp_color_map = assign_evenly_spaced_colors(temp_cols, colormap)
 for col in temp_cols:
     if col not in color_map_ui:
         color_map_ui[col] = temp_color_map[col]
         color_map_excel[col] = temp_color_map[col]
-
-style_options = {
-    "直線": {"dash": None, "marker": None},
-    "点線": {"dash": "dash", "marker": None},
-    "点のみ": {"dash": None, "marker": "circle"},
-    "線＋点": {"dash": None, "marker": "circle"},
-    "破線＋点": {"dash": "dash", "marker": "circle"},
-    "ドット線": {"dash": "dot", "marker": None}
-}
 
 # ===== グラフをxlsx変換保存するためのボタン =====
 xlsx_io = create_excel_combined_charts(
@@ -538,7 +538,7 @@ xlsx_io = create_excel_combined_charts(
 fig = go.Figure()
 
 for col in selected_y_cols:
-    style = style_options.get(st.session_state["style_map"].get(col, "直線"), {})
+    style = style_options.get(st.session_state["style_map"].get(col, "lines"), {})
     fig.add_trace(go.Scatter(
         x=time_vals,
         y=df[col],
@@ -686,14 +686,13 @@ with st.expander("🎨 Matplotlib chart", expanded=False):
     colormap = plt.get_cmap(colormap_name)
 
     style_options = {
-        "直線": {"linestyle": "-", "marker": ""},
-        "点線": {"linestyle": "--", "marker": ""},
-        "点のみ": {"linestyle": "", "marker": "o"},
-        "線＋点": {"linestyle": "-", "marker": "o"},
-        "破線＋点": {"linestyle": "--", "marker": "o"},
-        "ドット線": {"linestyle": ":", "marker": ""}
+        "-": {"linestyle": "-", "marker": ""},
+        "--": {"linestyle": "--", "marker": ""},
+        ".": {"linestyle": "", "marker": "o"},
+        "-＋.": {"linestyle": "-", "marker": "o"},
+        "--＋.": {"linestyle": "--", "marker": "o"},
+        ".": {"linestyle": ":", "marker": ""}
     }
-
     for i in range(0, len(selected_y_cols), 5):
             row_cols = st.columns(5)
             for j, col in enumerate(selected_y_cols[i:i+5]):
