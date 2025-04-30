@@ -1,6 +1,6 @@
 import streamlit as st # type: ignore
 import pandas as pd
-import plotly.graph_objects as go
+import plotly.graph_objects as go # type: ignore
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -63,8 +63,8 @@ st.markdown("""
   border: none;
   border-radius: 3px;
   background: linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet);
-  margin-top: 20px;
-  margin-bottom: 26px;
+  margin-top: 10px;
+  margin-bottom: 4px;
 ">
 """, unsafe_allow_html=True)
 
@@ -85,6 +85,24 @@ section[data-testid="stSidebar"] h4,
 section[data-testid="stSidebar"] .stHeading {
   color: goldenrod;
   font-size: 1.2rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# st.button用css
+st.markdown("""
+<style>
+div.stDownloadButton > button {
+    background-color: crimson;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    transition: background-color 0.3s;
+}
+div.stDownloadButton > button:hover {
+    background-color: #105d96;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -549,8 +567,6 @@ for col in secondary_y_cols:
         showlegend=True
     ))
 
-# ==== 📏 平均値と垂線表示用 toggle（Expanderの代替） ====
-show_avg = st.toggle("📏 任意区間の平均値を表示", value=False)
 xlsx_filename = file.replace(".csv", ".xlsx")
 st.download_button(
     label="📥 To XLSX Output (with Charts)",
@@ -558,6 +574,9 @@ st.download_button(
     file_name=xlsx_filename,
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
+# ==== 📏 平均値と垂線表示用 toggle（Expanderの代替） ====
+show_avg = st.toggle("📏 任意区間の平均値を表示", value=False)
+
 if show_avg:
     midpoint = len(df) // 2
     col1, col2, col3, col4 = st.columns([1, 1, 2, 2])
