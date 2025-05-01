@@ -73,10 +73,6 @@ def get_default_power_cols():
 
     return available
 
-
-
-
-
 def sanitize_key(text: str) -> str:
     return re.sub(r'\W+', '_', text)
 
@@ -119,30 +115,22 @@ section[data-testid="stSidebar"] .stHeading {
   color: goldenrod;
   font-size: 1.2rem;
 }
-section[data-testid="stSidebar"] .stMarkdown p {
-  color: white;
-  font-size: 1.05rem;
-}
-section[data-testid="stSidebar"] label {
-  color: white !important;
-  font-size: 1.05rem;
-}
 </style>
 """, unsafe_allow_html=True)
 
 st.title("\U0001F4CADTT Viewer")
 
 # ===== ファイルアップロード =====
-with st.sidebar.expander("1️⃣ CSVファイルの選択", expanded=True):
+with st.sidebar.expander("1️⃣ Choose your csv file", expanded=True):
     uploaded_file = st.file_uploader("CSVファイルをアップロード", type="csv", accept_multiple_files=False)
 
     if not uploaded_file:
-        st.warning("CSVファイルをアップロードしてください。")
+        st.warning("Upload your csv file。")
         st.stop()
 
     file = uploaded_file.name
-    x_axis_title = st.text_input("X軸のタイトル", value="Time", key="x_axis_title_input")
-    y_axis_title = st.text_input("縦軸のタイトル", value="Power (W)", key="y_axis_title_input")
+    x_axis_title = st.text_input("X-axis title", value="Time", key="x_axis_title_input")
+    y_axis_title = st.text_input("Y-axis title", value="Power (W)", key="y_axis_title_input")
     previous_file = st.session_state.get("last_selected_file", None)
 
 @st.cache_data
@@ -165,7 +153,7 @@ for col in df.columns:
 # ===== Time列の取得 =====
 time_col_candidates = [col for col in df.columns if "time" in col.lower()]
 if not time_col_candidates:
-    st.error("Time列が見つかりません。CSVに 'Time' 列を追加してください。")
+    st.error("Not found Time column.")
     st.stop()
 time_col = time_col_candidates[0]
 
@@ -174,6 +162,12 @@ try:
     time_vals = df[time_col].dt.strftime("%H:%M:%S")
 except:
     time_vals = df[time_col]
+
+# CPU温度の列を抽出（DTS形式に限定せず、TempやCPU+温度のような名前も対象に）
+temp_cols = [
+    col for col in df.columns
+    if "TCPU_D0_Temperature(C)" in col or re.match(r"SEN\d+_D0_Temperature\(C\)", col)
+]
 
 # ===== デフォルト縦軸列取得関数 =====
 
@@ -191,8 +185,8 @@ elif "selected_y_cols" not in st.session_state:
     reset_selected_y_cols()
 # ===== 第一縦軸列選択（ExpanderでまとめてUI整理） =====
 df_unique_columns = pd.Index(dict.fromkeys(df.columns))
-with st.sidebar.expander("2️⃣ 第一縦軸の列設定", expanded=True):
-    search_query = st.text_input("検索キーワード（縦軸）", value="Power", key="primary_search_input")
+with st.sidebar.expander("2️⃣ Setting for 1st Y-axis column", expanded=True):
+    search_query = st.text_input("Searching (Y-axis)", value="Power", key="primary_search_input")
     y_axis_candidates = [col for col in df_unique_columns if search_query.lower() in col.lower() and col != time_col]
 
     if "selected_y_cols" not in st.session_state:
@@ -201,7 +195,7 @@ with st.sidebar.expander("2️⃣ 第一縦軸の列設定", expanded=True):
         st.session_state["primary_add_selectbox"] = ""
 
     selected_to_add = st.selectbox(
-        "候補から列を追加（即時追加）",
+        "Attend column",
         options=[""] + [col for col in y_axis_candidates if col not in st.session_state.selected_y_cols],
         index=0,
         key="primary_add_selectbox"
@@ -214,10 +208,10 @@ with st.sidebar.expander("2️⃣ 第一縦軸の列設定", expanded=True):
         st.rerun() 
 
 
-    st.markdown("### 第一縦軸 描画中の列")
+    st.markdown("### 1st Y-axis -on viewing-")
     current_selected = st.session_state.selected_y_cols.copy()
     updated_selection = st.multiselect(
-        "チェックを外すと削除",
+        "Erase viewing by clicking",
         options=current_selected,
         default=current_selected,
         key="primary_remove_multiselect"
@@ -228,64 +222,64 @@ with st.sidebar.expander("2️⃣ 第一縦軸の列設定", expanded=True):
 
 
 # ===== グラフ書式設定 + フォント + 軸範囲 + 凡例 + 第二縦軸トグル まとめてexpander =====
-with st.sidebar.expander("3️⃣ グラフ書式設定", expanded=True):
+with st.sidebar.expander("3️⃣ Chart setting", expanded=True):
     colormap_list = sorted(plt.colormaps())
     default_cmap = "Accent"
     st.session_state["colormap_name"] = st.selectbox(
-        "カラーマップを選択",
+        "Choose colormap",
         colormap_list,
         index=colormap_list.index(default_cmap) if default_cmap in colormap_list else 0,
         key="colormap_select"
     )
-    width = st.slider("グラフの横幅\n(For saving chart)", 8, 24, 14, key="plot_width")
-    height = st.slider("グラフの縦幅\n(For saving chart)", 4, 16, 7, key="plot_height")
-    ytick_step = st.number_input("縦軸の目盛間隔", min_value=1, value=5, key="ytick_step")
-    show_cursor = st.checkbox("垂線とラベルを表示\n(For saving chart)", value=False, key="show_cursor")
-    cursor_index = st.number_input("任意点で垂線を表示\n(For saving chart)", min_value=0, max_value=len(df)-1, value=0, key="cursor_index")
-    show_xgrid = st.checkbox("始点・終点のグリッドを表示\n", value=True, key="show_xgrid")
+    width = st.slider("Chart width\n(For saving chart)", 8, 24, 14, key="plot_width")
+    height = st.slider("Chart height\n(For saving chart)", 4, 16, 7, key="plot_height")
+    ytick_step = st.number_input("Y-axis ticks duration", min_value=1, value=5, key="ytick_step")
+    show_cursor = st.checkbox("View vertical line and labelname\n(For saving chart)", value=False, key="show_cursor")
+    cursor_index = st.number_input("View oen vertical line\n(For saving chart)", min_value=0, max_value=len(df)-1, value=0, key="cursor_index")
+    show_xgrid = st.checkbox("View start and end idx grid\n(For saving chart)", value=True, key="show_xgrid")
 
-    st.markdown("### 🖋 フォントサイズ設定")
-    label_font = st.slider("軸ラベルのサイズ\n(For saving chart)", 8, 24, 17, key="label_font")
-    tick_font = st.slider("目盛のフォントサイズ\n(For saving chart)", 6, 20, 13, key="tick_font")
-    title_font = st.slider("タイトルのサイズ\n(For saving chart)", 10, 30, 17, key="title_font")
+    st.markdown("### 🖋 Font size setting")
+    label_font = st.slider("Y-axis label size\n(For saving chart)", 8, 24, 17, key="label_font")
+    tick_font = st.slider("Both axis size\n(For saving chart)", 6, 20, 13, key="tick_font")
+    title_font = st.slider("Chart title size\n(For saving chart)", 10, 30, 17, key="title_font")
 
-    st.markdown("### 📐第一縦軸の範囲")
+    st.markdown("### 📐1st Y-axis title range")
     numeric_cols = df.select_dtypes(include='number').columns
     y_min = 0
     try:
         y_max_data = int(df[st.session_state.get("selected_y_cols", [])].max().max() * 1.1)
     except:
         y_max_data = 70
-    y_max = st.number_input("第一縦軸の上限", min_value=1, value=y_max_data if y_max_data < 10000 else 100, key="y_max")
+    y_max = st.number_input("1st Y-axis upper limit", min_value=1, value=y_max_data if y_max_data < 10000 else 100, key="y_max")
 
-    st.markdown("### 📌 凡例の設定 (For saving chart)")
-    show_legend = st.toggle("凡例を表示する\n(For saving chart)", value=True, key="show_legend")
+    st.markdown("### 📌 Legend setting (For saving chart)")
+    show_legend = st.toggle("View legend\n(For saving chart)", value=True, key="show_legend")
     legend_font = None
     legend_alpha = None
     if show_legend:
-        legend_font = st.slider("凡例のフォントサイズ\n(For saving chart)", 6, 20, 10, key="legend_font")
-        legend_alpha = st.slider("凡例の透過度 (0=透明, 1=不透明)\n(For saving chart)", 0.0, 1.0, 0.5, step=0.05, key="legend_alpha")
+        legend_font = st.slider("legend font size\n(For saving chart)", 6, 20, 10, key="legend_font")
+        legend_alpha = st.slider("Legend opacity (0=transparent, 1=opaque)\n(For saving chart)", 0.0, 1.0, 0.5, step=0.05, key="legend_alpha")
 
 # ===== 第二縦軸設定（expander内にトグルも含めて表示） =====
-with st.sidebar.expander("4️⃣ 第二縦軸の設定", expanded=True):
-    use_secondary_axis = st.toggle("第二縦軸を使用する", value=False, key="use_secondary_axis")
+with st.sidebar.expander("4️⃣ 2nd Y-axis setting", expanded=True):
+    use_secondary_axis = st.toggle("Utilize 2nd Y-axis", value=False, key="use_secondary_axis")
 
     if use_secondary_axis:
-        secondary_y_axis_title = st.text_input("第二縦軸のタイトル", value="Temperature (deg)", key="y2_title")
-        secondary_tick_step = st.number_input("第二縦軸の目盛間隔", min_value=1, value=5, key="y2_tick_step")
+        secondary_y_axis_title = st.text_input("2nd X-axis title", value="Temperature (deg)", key="y2_title")
+        secondary_tick_step = st.number_input("2nd Y-axis title", min_value=1, value=5, key="y2_tick_step")
 
         y2_max_data = int(df.select_dtypes(include='number').max().max() * 1.1)
-        y2_max = st.number_input("第二縦軸の上限\n(For saving chart)", min_value=1, value=y2_max_data if y2_max_data < 10000 else 100, key="y2_max")
+        y2_max = st.number_input("2nd Y-axis upper limit\n(For saving chart)", min_value=1, value=y2_max_data if y2_max_data < 10000 else 100, key="y2_max")
 
-        st.markdown("**第二縦軸の列を検索・追加**")
-        y2_search = st.text_input("検索キーワード（第二縦軸）", value="Temp", key="y2_search")
+        st.markdown("**Search and attend 2nd Y-axis column**")
+        y2_search = st.text_input("Searching（2nd Y-axis）", value="Temp", key="y2_search")
         y2_candidates = [col for col in df.columns if y2_search.lower() in col.lower() and col != time_col]
 
         if "secondary_y_cols" not in st.session_state:
             st.session_state.secondary_y_cols = []
 
         y2_add = st.selectbox(
-            "候補から列を追加（第二縦軸)",
+            "Attend column（2nd Y-axis)",
             options=[""] + [col for col in y2_candidates if col not in st.session_state.secondary_y_cols],
             index=0
         )
@@ -296,9 +290,9 @@ with st.sidebar.expander("4️⃣ 第二縦軸の設定", expanded=True):
             st.rerun()  # ← rerun後にマークダウン描画されるようになる！
 
         # ここは常に描画される（マークダウン＋チェックボックス）
-        st.markdown("### 第二縦軸 描画中の列")
+        st.markdown("### 2nd Y-axis -on viewing-")
         y2_remove_cols = st.multiselect(
-            "チェックを外すと削除",
+            "Erase viewing by clicking",
             options=st.session_state.secondary_y_cols,
             default=st.session_state.secondary_y_cols,
             key="y2_remove"
@@ -314,6 +308,16 @@ secondary_y_cols = st.session_state.get("secondary_y_cols", []) if use_secondary
 if "style_map" not in st.session_state:
     st.session_state["style_map"] = {}
 
+colormap_name = st.session_state["colormap_name"]
+colormap = cm.get_cmap(colormap_name)
+all_plot_cols = selected_y_cols + secondary_y_cols
+color_map_ui = {}
+color_map_excel = {}
+plot_cols = selected_y_cols + secondary_y_cols
+for idx, col in enumerate(plot_cols):
+    color = get_color_hex(colormap, idx, len(plot_cols))
+    color_map_ui[col] = color
+    color_map_excel[col] = color
 for col in selected_y_cols + secondary_y_cols:
     st.session_state["style_map"].setdefault(col, "直線")
 
@@ -321,18 +325,82 @@ colormap_name = st.session_state["colormap_name"]
 colormap = cm.get_cmap(colormap_name)
 
 style_options = {
-    "直線": {"dash": None, "marker": None},
-    "点線": {"dash": "dash", "marker": None},
-    "点のみ": {"dash": None, "marker": "circle"},
-    "線＋点": {"dash": None, "marker": "circle"},
-    "破線＋点": {"dash": "dash", "marker": "circle"},
-    "ドット線": {"dash": "dot", "marker": None}
+    "-": {"linestyle": "-", "marker": ""},
+    "--": {"linestyle": "--", "marker": ""},
+    ".": {"linestyle": "", "marker": "o"},
+    "-＋.": {"linestyle": "-", "marker": "o"},
+    "--＋.": {"linestyle": "--", "marker": "o"},
+    ".": {"linestyle": ":", "marker": ""}
 }
 
 # ===== 平均値表示のUI（Expanderでまとめて制御） =====
 if "show_avg_lines" not in st.session_state:
     st.session_state.show_avg_lines = False
 
+#===== グラフ化のための変換コード
+def export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols):
+    output = BytesIO()
+    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    worksheet = workbook.add_worksheet("Data")
+    col_offset = 0
+
+    header_format = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2'})
+    gray_fill = workbook.add_format({'bg_color': '#D9D9D9'})
+
+    # --- MainPlotのデータ書き込み ---
+    worksheet.write(0, 0, "Time", header_format)
+    for idx, col in enumerate(selected_y_cols):
+        worksheet.write(0, idx + 1, col, header_format)
+
+    for row_idx, (time_val, *values) in enumerate(df[[time_col] + selected_y_cols].itertuples(index=False), start=1):
+        worksheet.write(row_idx, 0, str(time_val))
+        for col_idx, value in enumerate(values):
+            worksheet.write(row_idx, col_idx + 1, value)
+
+    # --- グレー塗りつぶし2列 ---
+    start_col = len(selected_y_cols) + 1
+    worksheet.set_column(start_col, start_col+1, 4, gray_fill)
+
+    # --- CPUtempデータ書き込み ---
+    temp_start_col = start_col + 2
+    for idx, col in enumerate(temp_cols):
+        worksheet.write(0, temp_start_col + idx, col, header_format)
+
+    for row_idx, (time_val, *values) in enumerate(df[[time_col] + temp_cols].itertuples(index=False), start=1):
+        for col_idx, value in enumerate(values[1:]):  # skip time_val
+            worksheet.write(row_idx, temp_start_col + col_idx, value)
+
+    # --- MainPlotグラフ書き込み ---
+    chart = workbook.add_chart({'type': 'line'})
+    for idx, col in enumerate(selected_y_cols):
+        chart.add_series({
+            'name': ['Data', 0, idx + 1],
+            'categories': ['Data', 1, 0, len(df), 0],
+            'values': ['Data', 1, idx + 1, len(df), idx + 1],
+            'line': {'color': get_color_hex(cm.get_cmap(colormap_name), idx, len(selected_y_cols))}
+        })
+    chart.set_title({'name': 'Main Plot'})
+    chart.set_x_axis({'name': 'Time'})
+    chart.set_y_axis({'name': 'Value'})
+    worksheet.insert_chart(9, col_offset, chart, {"x_scale": 1.6, "y_scale": 1.9})
+
+    # --- CPUtempグラフ書き込み ---
+    chart2 = workbook.add_chart({'type': 'line'})
+    for idx, col in enumerate(temp_cols):
+        chart2.add_series({
+            'name': ['Data', 0, temp_start_col + idx],
+            'categories': ['Data', 1, 0, len(df), 0],
+            'values': ['Data', 1, temp_start_col + idx, len(df), temp_start_col + idx],
+            'line': {'color': get_color_hex(cm.get_cmap(colormap_name), idx, len(temp_cols))}
+        })
+    chart2.set_title({'name': 'CPU & Sensors Temperature'})
+    chart2.set_x_axis({'name': 'Time'})
+    chart2.set_y_axis({'name': 'Temperature (°C)'})
+    worksheet.insert_chart(9, temp_start_col, chart2, {"x_scale": 1.6, "y_scale": 1.9})
+
+    workbook.close()
+    output.seek(0)
+    return output
 
 fig = go.Figure()
 total_lines = len(selected_y_cols) + len(secondary_y_cols)
@@ -371,23 +439,24 @@ for j, col in enumerate(secondary_y_cols):
     ))
 
 # ==== 📏 平均値と垂線表示用 toggle（Expanderの代替） ====
-show_avg = st.toggle("📏 任意区間の平均値を表示", value=False)
+show_avg = st.toggle("📏 Show the average value of the selected range", value=False)
+
 
 if show_avg:
     midpoint = len(df) // 2
     col1, col2, col3, col4 = st.columns([1, 1, 2, 2])
     with col1:
-        idx_start = st.number_input("開始インデックス", min_value=0, max_value=len(df)-1, value=0, step=1, key="idx_start")
+        idx_start = st.number_input("Start index", min_value=0, max_value=len(df)-1, value=0, step=1, key="idx_start")
     with col2:
-        idx_end = st.number_input("終了インデックス", min_value=0, max_value=len(df)-1, value=midpoint, step=1, key="idx_end")
+        idx_end = st.number_input("End index", min_value=0, max_value=len(df)-1, value=midpoint, step=1, key="idx_end")
     with col3:
         available_avg_cols = st.session_state.selected_y_cols or df.select_dtypes(include='number').columns.tolist()
-        avg_target_col = st.selectbox("対象データ列", options=available_avg_cols, index=0, key="avg_col")
+        avg_target_col = st.selectbox("Target column", options=available_avg_cols, index=0, key="avg_col")
 
     if idx_start < idx_end and avg_target_col in df.columns:
         avg_val = df[avg_target_col].iloc[idx_start:idx_end+1].mean()
         with col4:
-            st.success(f"📏 {avg_target_col} の {idx_start}〜{idx_end} の平均値: {avg_val:.2f}")
+            st.success(f"📏 {avg_target_col} の {idx_start}〜{idx_end} Average: {avg_val:.2f}")
 
         x_start = time_vals.iloc[idx_start] if hasattr(time_vals, "iloc") else time_vals[idx_start]
         x_end = time_vals.iloc[idx_end] if hasattr(time_vals, "iloc") else time_vals[idx_end]
@@ -397,7 +466,14 @@ if show_avg:
         fig.add_vline(x=x_end, line=dict(dash="dot", width=5, color="blue"))
 
 layout_dict = dict(
-    title="",
+    title=dict(
+    text=f"{file}",
+    font=dict(size=18),
+    x=0.09,  # 👈 完全に左寄せ
+    xanchor="left",  # 👈 左基準にする
+    y=0.95,  # （オプション）縦位置調整（気になるなら）
+    pad=dict(t=10, b=10)  # （オプション）上と下に少しだけ余白
+    ),
     xaxis=dict(title=dict(text=x_axis_title, font=dict(size=18)),tickfont=dict(size=16)),
     yaxis=dict(
         title=dict(text=y_axis_title, font=dict(size=18)),
@@ -424,7 +500,7 @@ layout_dict = dict(
             pad={"r": 0, "t": 0},
             buttons=[
                 dict(
-                    label="凡例表示",
+                    label="Legend on",
                     method="relayout",
                     args=[{
                         "showlegend": True,
@@ -435,7 +511,7 @@ layout_dict = dict(
                     }]
                 ),
                 dict(
-                    label="凡例非表示",
+                    label="Legend off",
                     method="relayout",
                     args=[{
                         "showlegend": False,
@@ -464,68 +540,32 @@ if st.session_state.get("use_secondary_axis", False):
     )
 fig.update_layout(**layout_dict)
 
-st.plotly_chart(fig, use_container_width=True)
-
-def export_xlsx(df, selected_y_cols, time_vals, fig):
-    output = BytesIO()
-    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
-    worksheet = workbook.add_worksheet("Data")
-
-    # --- データ書き込み ---
-    header_format = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2'})
-    worksheet.write(0, 0, "Time", header_format)
-    for idx, col in enumerate(selected_y_cols):
-        worksheet.write(0, idx + 1, col, header_format)
-
-    for row_idx, (time_val, *values) in enumerate(df[[time_col] + selected_y_cols].itertuples(index=False), start=1):
-        worksheet.write(row_idx, 0, str(time_val))
-        for col_idx, value in enumerate(values):
-            worksheet.write(row_idx, col_idx + 1, value)
-
-    # --- グラフ書き込み ---
-    chart = workbook.add_chart({'type': 'line'})
-    for idx, col in enumerate(selected_y_cols):
-        chart.add_series({
-            'name':       ['Data', 0, idx + 1],
-            'categories': ['Data', 1, 0, len(df), 0],
-            'values':     ['Data', 1, idx + 1, len(df), idx + 1],
-            'line':       {'color': get_color_hex(cm.get_cmap(colormap_name), idx, len(selected_y_cols))},
-        })
-
-    chart.set_title({'name': 'Main Plot'})
-    chart.set_x_axis({'name': 'Time'})
-    chart.set_y_axis({'name': 'Value'})
-
-    worksheet.insert_chart('H2', chart)
-
-    workbook.close()
-    output.seek(0)
-    return output
-
-# --- Main Plotのあとにエクスポートセクション追加 ---
-towrite = export_xlsx(df, selected_y_cols, time_vals, fig)
+towrite = export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols)
+xlsx_filename = file.replace(".csv", ".xlsx")
 st.download_button(
     label="📥 To XLSX Output (with Charts)",
     data=towrite.getvalue(),
-    file_name="Charts.xlsx",
+    file_name=xlsx_filename,
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
+
+st.plotly_chart(fig, use_container_width=True)
 
     # ===== Pyplotでの保存用チャート表示（メイン画面） =====
 st.markdown('<p style="font-size: 30px; margin-top: 0em;"><b>↓🎨For saving chart↓</b></p>', unsafe_allow_html=True)
 
-with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
+with st.expander("🎨 Matplotlib chart", expanded=False):
 
     colormap_name = st.session_state["colormap_name"]
     colormap = plt.get_cmap(colormap_name)
 
     style_options = {
-        "直線": {"linestyle": "-", "marker": ""},
-        "点線": {"linestyle": "--", "marker": ""},
-        "点のみ": {"linestyle": "", "marker": "o"},
-        "線＋点": {"linestyle": "-", "marker": "o"},
-        "破線＋点": {"linestyle": "--", "marker": "o"},
-        "ドット線": {"linestyle": ":", "marker": ""}
+        "-": {"linestyle": "-", "marker": ""},
+        "--": {"linestyle": "--", "marker": ""},
+        ".": {"linestyle": "", "marker": "o"},
+        "-＋.": {"linestyle": "-", "marker": "o"},
+        "--＋.": {"linestyle": "--", "marker": "o"},
+        ".": {"linestyle": ":", "marker": ""}
     }
 
     for i in range(0, len(selected_y_cols), 5):
@@ -534,7 +574,7 @@ with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
                 safe_key = sanitize_key(f"style1_{i+j}_{col}")
                 with row_cols[j]:
                     st.session_state["style_map"][col] = st.selectbox(
-                        f"{col} の形式", list(style_options.keys()), index=0, key=safe_key)
+                        f"{col} style", list(style_options.keys()), index=0, key=safe_key)
 
     for i in range(0, len(secondary_y_cols), 5):
             row_cols = st.columns(5)
@@ -542,10 +582,10 @@ with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
                 safe_key = sanitize_key(f"style2_{i+j}_{col}")
                 with row_cols[j]:
                     st.session_state["style_map"][col] = st.selectbox(
-                        f"{col} の形式（第二縦軸）", list(style_options.keys()), index=2, key=safe_key)
+                        f"{col} style（2nd Y-axis）", list(style_options.keys()), index=2, key=safe_key)
 
    
-    st.write({"第一縦軸": selected_y_cols, "第二縦軸": secondary_y_cols})
+    st.write({"1st Y-axis": selected_y_cols, "2nd Y-axis": secondary_y_cols})
 
     try:
         if "color_map" not in st.session_state:
@@ -556,7 +596,7 @@ with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
 
         for i, col in enumerate(selected_y_cols):
             color = st.session_state.color_map.get(col, colormap(i / max(n_total-1, 1)))
-            style = style_options[st.session_state["style_map"].get(col, "直線")]
+            style = style_options[st.session_state["style_map"].get(col, "line")]
             ax.plot(time_vals, df[col], label=col, linewidth=1.5, linestyle=style["linestyle"], marker=style["marker"], color=color)
 
         ax2 = None
@@ -564,7 +604,7 @@ with st.expander("🎨 Matplotlib chart (保存用chart)", expanded=False):
             ax2 = ax.twinx()
             for j, col in enumerate(secondary_y_cols):
                 color = st.session_state.color_map.get(col, colormap((len(selected_y_cols)+j) / max(n_total-1, 1)))
-                style = style_options[st.session_state["style_map"].get(col, "点のみ")]
+                style = style_options[st.session_state["style_map"].get(col, "only markers")]
                 ax2.plot(time_vals, df[col], label=col, linewidth=1.5, linestyle=style["linestyle"], marker=style["marker"], markersize=1.7,color=color)
             ax2.set_ylabel(secondary_y_axis_title, fontsize=label_font, labelpad=2)
             ax2.tick_params(axis='y', labelsize=tick_font)
@@ -691,12 +731,6 @@ for i, tab in enumerate(tabs):
 with tabs[0]:
     st.markdown(f"## {tab_headers['CPU&sensors temp']}")
 
-# CPU温度の列を抽出（DTS形式に限定せず、TempやCPU+温度のような名前も対象に）
-    temp_cols = [
-        col for col in df.columns
-        if "TCPU_D0_Temperature(C)" in col or re.match(r"SEN\d+_D0_Temperature\(C\)", col)
-    ]
-
     if temp_cols:
         fig_temp = go.Figure()
         temp_abnormal = False
@@ -709,7 +743,7 @@ with tabs[0]:
             ))
             if df[col].max() > 130:
                 temp_abnormal = True
-                st.warning(f" {col} に130℃超あり", icon="⚠️")
+                st.warning(f" {col} over 130deg", icon="⚠️")
 
 
 
@@ -742,7 +776,7 @@ with tabs[0]:
                     pad={"r": 0, "t": 0},
                     buttons=[
                         dict(
-                            label="凡例表示",
+                            label="Legend on",
                             method="relayout",
                             args=[
                                 {
@@ -755,7 +789,7 @@ with tabs[0]:
                             ]
                         ),
                         dict(
-                            label="凡例非表示",
+                            label="Legend off",
                             method="relayout",
                             args=[
                                 {
@@ -774,7 +808,7 @@ with tabs[0]:
 
         st.plotly_chart(fig_temp, use_container_width=True)
     else:
-        st.info("CPU温度に関する列（CPUxx-DTS）が見つかりませんでした。")
+        st.info("No found")
 
 # === 追加: Powerlimitタブ ===
 with tabs[1]:
@@ -808,7 +842,7 @@ with tabs[1]:
             ))
             if (y_data < 0).any() or (y_data > 250).any():
                 power_abnormal = True
-                st.warning(f"{col} に0未満または250W超のデータがあります", icon="⚠️")
+                st.warning(f"{col} found below 0deg or over 250deg", icon="⚠️")
 
         yaxis_range = [0, 100] if power_abnormal else None
 
@@ -841,7 +875,7 @@ with tabs[1]:
                     pad={"r": 0, "t": 0},
                     buttons=[
                         dict(
-                            label="凡例表示",
+                            label="Legend on",
                             method="relayout",
                             args=[
                                 {
@@ -854,7 +888,7 @@ with tabs[1]:
                             ]
                         ),
                         dict(
-                            label="凡例非表示",
+                            label="Legend off",
                             method="relayout",
                             args=[
                                 {
@@ -873,7 +907,7 @@ with tabs[1]:
 
         st.plotly_chart(fig_power, use_container_width=True)
     else:
-        st.info("Power Limitに関する対象列が見つかりませんでした。")
+        st.info("No found")
 
 
 with tabs[2]:
@@ -948,7 +982,7 @@ with tabs[2]:
                     pad={"r": 0, "t": 0},
                     buttons=[
                         dict(
-                            label="凡例表示",
+                            label="Legend on",
                             method="relayout",
                             args=[
                                 {
@@ -961,7 +995,7 @@ with tabs[2]:
                             ]
                         ),
                         dict(
-                            label="凡例非表示",
+                            label="Legend off",
                             method="relayout",
                             args=[
                                 {
@@ -981,7 +1015,7 @@ with tabs[2]:
         st.plotly_chart(fig_epp, use_container_width=True)
 
     else:
-        st.warning("必要な列（EPP または power mode state）が見つかりません。")
+        st.warning("No found")
 
 # ===== CoreType表示（段組＋カラーマップ対応）を成功風UIで表示 =====
 core_type_map = {}
