@@ -54,11 +54,6 @@ st.title(":open_file_folder: Converter&Viewer warehouse")
 # ツール定義
 tools = [
     {
-        "label": "sensor correlation",
-        "href": "sensor_correlation",
-        "image": "fig/1.png"
-    },
-    {
         "label": "pTAT Viewer",
         "href": "pTAT_viewer",
         "image": "fig/2.png"
@@ -72,16 +67,30 @@ tools = [
         "label": "converter",
         "href": "converter",
         "image": "fig/4.png"
-    }
+    },
+    {
+        "label": "sensor correlation",
+        "href": "sensor_correlation",
+        "image": "fig/1.png"
+    },
 ]
 
 # ヘッダー直下の行（左：説明文、右：Bug Reportボタン）
 desc_col, feedback_col = st.columns([4, 1])
 with desc_col:
-    st.write("画像をクリックして各ツールページに移動できます。")
+    st.write("Move to function page by clicking icons")
 with feedback_col:
-    if st.button("🐞 Bug report"):
-        st.markdown("[アンケートフォームへ移動（ダミー）](https://example.com/survey-form)", unsafe_allow_html=True)
+    st.markdown(
+    """
+    <a href="https://forms.office.com/r/vBCZR0tk9h" target="_blank">
+        <button style="font-size: 1.2rem; padding: 0.6rem 1.2rem; float: right; background-color: orange; border: none; border-radius: 6px; cursor: pointer;">
+            🐞 Bug report
+        </button>
+    </a>
+    """,
+    unsafe_allow_html=True
+)
+
 
 # 🌈 虹色ライン
 st.markdown("""
