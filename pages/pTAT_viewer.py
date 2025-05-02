@@ -50,8 +50,6 @@ plt.rcParams["font.family"] = "Times New Roman"
 times_fonts = [f.fname for f in fm.fontManager.ttflist if 'Times New Roman' in f.name]
 if times_fonts:
     plt.rcParams["font.family"] = fm.FontProperties(fname=times_fonts[0]).get_name()
-else:
-    st.warning("⚠️ Times New Roman フォントが見つかりません。別のフォントが使われます。")
 
 if "colormap_name" not in st.session_state:
     st.session_state["colormap_name"] ="jet"
@@ -366,7 +364,7 @@ with st.sidebar.expander("3️⃣ Chart setting", expanded=True):
     ytick_step = st.number_input("Y-axis ticks duration", min_value=1, value=5, key="ytick_step")
     show_cursor = st.checkbox("View vertical line and labelname\n(For saving chart)", value=False, key="show_cursor")
     cursor_index = st.number_input("View oen vertical line\n(For saving chart)", min_value=0, max_value=len(df)-1, value=0, key="cursor_index")
-    show_xgrid = st.checkbox("View start and end idx grid\n", value=True, key="show_xgrid")
+    show_xgrid = st.checkbox("View start and end idx grid\n(For saving chart)", value=True, key="show_xgrid")
 
     st.markdown("### 🖋 Font size setting")
     label_font = st.slider("Y-axis label size\n(For saving chart)", 8, 24, 17, key="label_font")
@@ -395,8 +393,8 @@ with st.sidebar.expander("4️⃣ 2nd Y-axis setting", expanded=True):
     use_secondary_axis = st.toggle("Utilize 2nd Y-axis", value=False, key="use_secondary_axis")
 
     if use_secondary_axis:
-        secondary_y_axis_title = st.text_input("2nd Y-axis title", value="Temperature (deg)", key="y2_title")
-        secondary_tick_step = st.number_input("2nd Y-axis", min_value=1, value=5, key="y2_tick_step")
+        secondary_y_axis_title = st.text_input("2nd X-axis title", value="Temperature (deg)", key="y2_title")
+        secondary_tick_step = st.number_input("2nd Y-axis title", min_value=1, value=5, key="y2_tick_step")
 
         y2_max_data = int(df.select_dtypes(include='number').max().max() * 1.1)
         y2_max = st.number_input("2nd Y-axis upper limit\n(For saving chart)", min_value=1, value=y2_max_data if y2_max_data < 10000 else 100, key="y2_max")
@@ -1520,7 +1518,7 @@ if core_type_map:
     """)
 
     for ctype, cores in grouped.items():
-        html += f"<div><div style='font-weight:bold; font-size:18px; margin-bottom:0px'>{ctype} Cores</div>"
+        html += f"<div><div style='font-weight:bold; font-size:18px; margin-bottom:0px'>{ctype}</div>"
         html += "<div style='display:flex; flex-wrap:wrap; gap:11px; font-size:17px;'>"
         for core in cores:
             html += f"<span>{core}</span>"
