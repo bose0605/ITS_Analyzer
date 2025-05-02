@@ -122,7 +122,7 @@ st.title("\U0001F4CADTT Viewer")
 
 # ===== ファイルアップロード =====
 with st.sidebar.expander("1️⃣ Choose your csv file", expanded=True):
-    uploaded_file = st.file_uploader("CSVファイルをアップロード", type="csv", accept_multiple_files=False)
+    uploaded_file = st.file_uploader("Upload csv file", type="csv", accept_multiple_files=False)
 
     if not uploaded_file:
         st.warning("Upload your csv file")
