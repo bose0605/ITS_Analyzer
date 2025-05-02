@@ -77,7 +77,7 @@ else:
 st.markdown("### 1️⃣ Upload files for analysis")
 col1, col2 = st.columns(2)
 with col1:
-    logger_file = st.file_uploader("Logger raw data", type=["xls", "xlsx"])
+    logger_file = st.file_uploader("Logger raw data", type=None)
 with col2:
     ptat_file = st.file_uploader("pTAT raw data", type=["csv"])
 
@@ -176,10 +176,18 @@ if "excel_bytes" in st.session_state:
         with tabs[0]:
             if len(numeric_cols) >= 2:
                 row1_col1, row1_col2 = st.columns(2)
+
                 with row1_col1:
                     col_x = st.selectbox("Select X-axis column", numeric_cols, index=0, key="x1")
+
                 with row1_col2:
-                    col_y = st.selectbox("Select Y-axis column", [col for col in numeric_cols if col != col_x], index=0, key="y1")
+                    y_options = [col for col in numeric_cols if col != col_x]
+                    current_y = st.session_state.get("y1", y_options[0])
+                    if current_y in y_options:
+                        y_index = y_options.index(current_y)
+                    else:
+                        y_index = 0
+                    col_y = st.selectbox("Select Y-axis column", y_options, index=y_index, key="y1")
 
                 row2_col1, row2_col2 = st.columns(2)
                 with row2_col1:
@@ -189,11 +197,11 @@ if "excel_bytes" in st.session_state:
 
                 row3_col1, row3_col2, row3_col3 = st.columns(3)
                 with row3_col1:
-                    point_opacity = st.slider("🔆 Marker opacity", 0.1, 1.0, 0.7, 0.1, key="opacity1")
+                    point_opacity = st.slider("Marker opacity", 0.1, 1.0, 0.7, 0.1, key="opacity1")
                 with row3_col2:
-                    show_y_equals_x = st.checkbox("⚫ Show y = x line", value=True)
+                    show_y_equals_x = st.checkbox("Show y = x line", value=True)
                 with row3_col3:
-                    show_grid = st.checkbox("🗺 Show grid", value=True)
+                    show_grid = st.checkbox("Show grid", value=True)
 
                 if "Experiment" in df.columns:
                     # セグメント数と選択ラベルを取得
