@@ -6,9 +6,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import tempfile
 import plotly.io as pio
+from sensor_correlation_modules.pipeline_module_to_4 import full_logger_ptat_pipeline as pipeline_4
+from sensor_correlation_modules.pipeline_module_to_5 import full_logger_ptat_pipeline as pipeline_5
 
-from pipeline_module_to_4 import full_logger_ptat_pipeline as pipeline_4
-from pipeline_module_to_5 import full_logger_ptat_pipeline as pipeline_5
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
 top_col_right = st.columns([8, 1])
@@ -59,7 +59,8 @@ div.stDownloadButton > button:hover {
 st.title("📊 Sensor correlation analyzer")
 
 try:
-    template_path = os.path.join(os.path.dirname(__file__), "../Result_template.xlsm")
+    template_path = os.path.join(os.path.dirname(__file__), "../sensor_correlation_modules/Result_template.xlsm")
+
 except NameError:
     template_path = os.path.join(os.getcwd(), "Result_template.xlsm")
 
