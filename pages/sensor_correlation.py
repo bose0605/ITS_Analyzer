@@ -41,65 +41,68 @@ button[data-baseweb="tab"] > div[data-testid="stMarkdownContainer"] > p {
 # st.button用css
 st.markdown("""
 <style>
-div.stDownloadButton > button {
-    background-color: crimson;
+button[data-testid="stDownloadButton-template-download"] {
+    background-color: #039CB2;
     color: white;
     border: none;
     border-radius: 8px;
     padding: 0.5rem 1rem;
     font-size: 1rem;
-    transition: background-color 0.3s;
+    margin-top: 30px;
 }
-div.stDownloadButton > button:hover {
+button[data-testid="stDownloadButton-template-download"]:hover {
     background-color: #105d96;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 Sensor correlation analyzer")
-
-try:
-    template_path = os.path.join(os.path.dirname(__file__), "../sensor_correlation_modules/Result_template.xlsm")
-
-except NameError:
-    template_path = os.path.join(os.getcwd(), "Result_template.xlsm")
-
-if os.path.exists(template_path):
-    with open(template_path, "rb") as f:
-        st.download_button(
-            label="📥 Download XLSX Template (for Logger-PTAT)",
-            data=f.read(),
-            file_name="Result_template.xlsm",
-            key="template-download"
-        )
-else:
-    st.warning("❗ Template not found.")
-
-st.markdown("### 1️⃣ Upload files for analysis")
-col1, col2 = st.columns(2)
+col1, non_col, col2, = st.columns([3,1,2])
 with col1:
+    st.title("📊 Sensor correlation analyzer")
+with col2:
+    try:
+        template_path = os.path.join(os.path.dirname(__file__), "../sensor_correlation_modules/Result_template.xlsm")
+
+    except NameError:
+        template_path = os.path.join(os.getcwd(), "Result_template.xlsm")
+
+    if os.path.exists(template_path):
+        with open(template_path, "rb") as f:
+            st.download_button(
+                label="📥 Download XLSX Template (for Logger-PTAT)",
+                data=f.read(),
+                file_name="Result_template.xlsm",
+                key="template-download"
+            )
+    else:
+        st.warning("❗ Template not found.")
+# st.subheader("### ")
+col1, col2, non_col,radio_col = st.columns([5, 5, 1, 5])
+with col1:    
+    st.markdown("### 1️⃣ Upload files for analysis")
     logger_file = st.file_uploader("Logger raw data", type=None)
 with col2:
+    st.markdown("### ")
     ptat_file = st.file_uploader("pTAT raw data", type=["csv"])
+with radio_col:
+    st.markdown("### 2️⃣ Select Experiment Split Mode")
+    # 初期化フラグを使って、segment selectboxの初期化を制御
+    if "segment_defaults_set" not in st.session_state:
+        st.session_state.segment_defaults_set = False
+    def reset_segment_defaults():
+        if st.session_state.split_mode == "4 segments":
+            st.session_state.segment_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None"]
+        else:
+            st.session_state.segment_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "pTAT+Fur+Charging"]
+        st.session_state.segment_defaults_set = True
 
-st.markdown("### 2️⃣ Select Experiment Split Mode")
-# 初期化フラグを使って、segment selectboxの初期化を制御
-if "segment_defaults_set" not in st.session_state:
-    st.session_state.segment_defaults_set = False
-def reset_segment_defaults():
-    if st.session_state.split_mode == "4 segments":
-        st.session_state.segment_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None"]
-    else:
-        st.session_state.segment_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "pTAT+Fur+Charging"]
-    st.session_state.segment_defaults_set = True
-
-split_mode = st.radio(
-    "Choose number of experiment segments",
-    ["4 segments", "5 segments"],
-    index=0,
-    key="split_mode",
-    on_change=reset_segment_defaults
-)
+    split_mode = st.radio(
+        "Choose number of experiment segments",
+        ["4 segments", "5 segments"],
+        index=0,
+        key="split_mode",
+        on_change=reset_segment_defaults
+    )
 
 
 st.markdown("### 3️⃣ Select Segment Labels")
@@ -126,40 +129,54 @@ for i in range(5):
 output_name = ("Merged")
 
 if logger_file and ptat_file:
-    if st.button("🚀 Run Analysis"):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            logger_path = os.path.join(tmpdir, logger_file.name)
-            ptat_path = os.path.join(tmpdir, ptat_file.name)
-            output_excel = os.path.join(tmpdir, output_name.strip() + ".xlsx")
+    # 横に中央配置
+    col_left, col_center, col_right = st.columns([2, 3, 2])
+    with col_center:
+        # CSSで横長スタイルに
+        st.markdown("""
+            <style>
+            div.stButton > button {
+                width: 100%;
+                padding: 1rem;
+                font-size: 1.2rem;
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 8px;
+            }
+            div.stButton > button:hover {
+                background-color: #218838;
+            }
+            </style>
+        """, unsafe_allow_html=True)
 
-            with open(logger_path, "wb") as f:
-                f.write(logger_file.read())
-            with open(ptat_path, "wb") as f:
-                f.write(ptat_file.read())
+        if st.button("🚀 Run Analysis", key="run-analysis"):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                logger_path = os.path.join(tmpdir, logger_file.name)
+                ptat_path = os.path.join(tmpdir, ptat_file.name)
+                output_excel = os.path.join(tmpdir, output_name.strip() + ".xlsx")
 
-            with st.spinner("Processing..."):
-                full_logger_ptat_pipeline = pipeline_4 if split_mode == "4 segments" else pipeline_5
+                with open(logger_path, "wb") as f:
+                    f.write(logger_file.read())
+                with open(ptat_path, "wb") as f:
+                    f.write(ptat_file.read())
 
-                merged_df, _ = full_logger_ptat_pipeline(
-                    logger_input_raw=logger_path,
-                    ptat_input_raw=ptat_path,
-                    merged_excel_output=output_excel
-                )
+                with st.spinner("Processing..."):
+                    full_logger_ptat_pipeline = pipeline_4 if split_mode == "4 segments" else pipeline_5
 
-            if merged_df is not None:
-                st.success("✅ Analysis Complete!")
+                    merged_df, _ = full_logger_ptat_pipeline(
+                        logger_input_raw=logger_path,
+                        ptat_input_raw=ptat_path,
+                        merged_excel_output=output_excel
+                    )
 
-                with open(output_excel, "rb") as f:
-                    st.session_state["excel_bytes"] = f.read()
-                    st.session_state["excel_filename"] = output_name.strip() + ".xlsx"
+                if merged_df is not None:
+                    st.success("✅ Analysis Complete!")
 
-if "excel_bytes" in st.session_state:
-    st.download_button(
-        label="📥 To XLSX Output",
-        data=st.session_state["excel_bytes"],
-        file_name=st.session_state["excel_filename"],
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+                    with open(output_excel, "rb") as f:
+                        st.session_state["excel_bytes"] = f.read()
+                        st.session_state["excel_filename"] = output_name.strip() + ".xlsx"
+
 
 if "excel_bytes" in st.session_state:
     st.header("📈 Visualization from Analysis Result")
@@ -196,31 +213,52 @@ if "excel_bytes" in st.session_state:
                 with row2_col2:
                     bal_val = st.number_input("Bal skin spec (deg)", value=0.0)
 
-                row3_col1, row3_col2, row3_col3 = st.columns(3)
+                row3_col1, row3_col2, row3_col3 = st.columns([3,1,4])
                 with row3_col1:
                     point_opacity = st.slider("Marker opacity", 0.1, 1.0, 0.7, 0.1, key="opacity1")
+                # with row3_col2:
+                #     show_y_equals_x = st.checkbox("Show y = x line", value=True)
                 with row3_col2:
-                    show_y_equals_x = st.checkbox("Show y = x line", value=True)
-                with row3_col3:
                     show_grid = st.checkbox("Show grid", value=True)
+                with row3_col3:
+                    if "Experiment" in df.columns:
+                        # セグメント数と選択ラベルを取得
+                        num_segments = 4 if split_mode == "4 segments" else 5
+                        effective_segments = selected_segments[:num_segments]
+                        # Experiment列のユニーク値取得（順序保持）
+                        exp_options = df["Experiment"].dropna().unique().tolist()[:num_segments]
+                        # ExperimentラベルとUIでの選択ラベルを対応づけ
+                        exp_display_map = dict(zip(exp_options, effective_segments))  # 例: {"Exp1": "pTAT+Fur", ...}
+                        # UIに表示するラベルリスト（選択肢）
+                        exp_display_labels = [exp_display_map[exp] for exp in exp_options]
+                        # ユーザーに表示されるselectは変換名（選択ラベル）、選択された値を元のExperimentに戻す
+                        selected_display_labels = st.multiselect("Filter by Experiment", exp_display_labels, default=exp_display_labels)
+                        selected_exps = [exp for exp, label in exp_display_map.items() if label in selected_display_labels]
+                        # dfをフィルター
+                        df_filtered = df[df["Experiment"].isin(selected_exps)]
+                    else:
+                        df_filtered = df.copy()
 
-                if "Experiment" in df.columns:
-                    # セグメント数と選択ラベルを取得
-                    num_segments = 4 if split_mode == "4 segments" else 5
-                    effective_segments = selected_segments[:num_segments]
-                    # Experiment列のユニーク値取得（順序保持）
-                    exp_options = df["Experiment"].dropna().unique().tolist()[:num_segments]
-                    # ExperimentラベルとUIでの選択ラベルを対応づけ
-                    exp_display_map = dict(zip(exp_options, effective_segments))  # 例: {"Exp1": "pTAT+Fur", ...}
-                    # UIに表示するラベルリスト（選択肢）
-                    exp_display_labels = [exp_display_map[exp] for exp in exp_options]
-                    # ユーザーに表示されるselectは変換名（選択ラベル）、選択された値を元のExperimentに戻す
-                    selected_display_labels = st.multiselect("Filter by Experiment", exp_display_labels, default=exp_display_labels)
-                    selected_exps = [exp for exp, label in exp_display_map.items() if label in selected_display_labels]
-                    # dfをフィルター
-                    df_filtered = df[df["Experiment"].isin(selected_exps)]
-                else:
-                    df_filtered = df.copy()
+                # 横幅3分割で中央カラムにボタン配置
+                left, center, right = st.columns([2, 3, 2])
+                with center:
+                    st.markdown("""
+                        <style>
+                        div.stDownloadButton > button {
+                            width: 100%;
+                            padding: 1rem;
+                            font-size: 1.2rem;
+                            background-color: crimson;
+                        }
+                        </style>
+                    """, unsafe_allow_html=True)
+                    st.download_button(
+                        label="📥 To XLSX Output",
+                        data=st.session_state["excel_bytes"],
+                        file_name=st.session_state["excel_filename"],
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="centered-download"
+                    )
 
                 color_map = {
                     "TAT+Fur": "blue",
@@ -264,14 +302,14 @@ if "excel_bytes" in st.session_state:
                     annotation_position="top right"
                 )
 
-                if show_y_equals_x:
-                    fig.add_trace(go.Scatter(
-                        x=[25, 60],
-                        y=[25, 60],
-                        mode="lines",
-                        line=dict(color="cyan"),
-                        name="y = x"
-                    ))
+                # if show_y_equals_x:
+                fig.add_trace(go.Scatter(
+                    x=[25, 60],
+                    y=[25, 60],
+                    mode="lines",
+                    line=dict(color="cyan"),
+                    name="y = x"
+                ))
 
                 fig.update_layout(
                     xaxis=dict(title=col_x, range=[25, 60], title_font=dict(size=18), tickfont=dict(size=14)),
@@ -291,7 +329,7 @@ if "excel_bytes" in st.session_state:
                 # except Exception:
                 #     st.warning("⚠️ Install 'kaleido' for PNG export.")
 
-                with st.expander("📋 View Raw Data"):
+                with st.expander("📋 View Raw Data", expanded=True):
                     cols_to_show = [col_x, col_y]
                     if "Experiment" in df.columns:
                         cols_to_show.append("Experiment")
