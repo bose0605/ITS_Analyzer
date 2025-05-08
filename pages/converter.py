@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from io import BytesIO
+from io import BytesIO, StringIO
 import plotly.express as px
 import xlsxwriter
 import re
@@ -44,6 +44,34 @@ def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
     df = pd.DataFrame(data, columns=header)
     df["ATM"] = df["ATM"].astype(str)
     return df
+# === Wistron tool Parser ===
+def convert_wistron_tool_file(uploaded_file):
+    if uploaded_file is None:
+        st.warning("⚠️ Wistron Tool file not uploaded.")
+        return None, None
+
+    try:
+        content = uploaded_file.read().decode('utf-8', errors='ignore')
+        df = pd.read_csv(StringIO(content), sep="\t")
+
+        # ✅ Time 컬럼을 문자열 "HH:MM:SS" 형식으로 변환
+        time_col = df.columns[0]
+        df[time_col] = pd.to_datetime(df[time_col], format="%H:%M:%S", errors='coerce')
+        df[time_col] = df[time_col].dt.strftime("%H:%M:%S")
+
+    except Exception as e:
+        st.error(f"❌ Failed to read Wistron Tool file: {e}")
+        return None, None
+
+    def convert_df_to_excel(df):
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Wistron Tool Log')
+        return output.getvalue()
+
+    excel_data = convert_df_to_excel(df)
+    return df, excel_data
+
 
 # === Logger Parser ===
 def convert_to_utf8_csv(input_file):
@@ -135,7 +163,7 @@ def convert_fanck_file(file) -> pd.DataFrame:
         seconds = int(time_digits[4:])
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-    df.iloc[:, 0] = df.iloc[:, 0].apply(convert_to_time)
+    df.iloc[:, 0] = df.iloc[:, 0].apply(convert_to_time).astype(str)
     original_cols = df.columns.tolist()
     renamed_cols = ["Time"] + [f"{col} (FanCK)" for col in original_cols[1:]]
     df.columns = renamed_cols
@@ -162,6 +190,7 @@ def read_generic_csv(file, label: str) -> pd.DataFrame:
         else:
             renamed_cols.append(f"{col} ({label})")
     df.columns = renamed_cols
+   
     return df
 
 # === UI ===
@@ -186,15 +215,22 @@ st.markdown("""
 st.title("📊 Data Wrangling & Visualization UI")
 st.subheader(":one: Drag & drop log files (multiple or single)")
 
+
 # === 1. File Upload UI ===
 file_labels = ["pTAT", "DTT", "THI", "FanCK", "logger"]
 cols = st.columns(len(file_labels))
 uploaded_data = {}
 
+# 첫 번째 줄 (기본 파일들)
 for i, label in enumerate(file_labels):
     with cols[i]:
         st.markdown(f"<h5 style='text-align:left; margin-bottom: 0rem;'>📁 {label}</h5>", unsafe_allow_html=True)
-        uploaded_files = st.file_uploader("", accept_multiple_files=True, key=f"file_{label}")
+        uploaded_files = st.file_uploader(
+            label=" ",  # 빈 문자열로 label 경고 피하기
+            accept_multiple_files=True,
+            key=f"file_{label}",
+            label_visibility="collapsed"
+        )
         if uploaded_files:
             uploaded_data[label] = []
             for idx, f in enumerate(uploaded_files):
@@ -211,23 +247,53 @@ for i, label in enumerate(file_labels):
                         df = convert_fanck_file(f)
                     else:
                         df = read_generic_csv(f, label)
+
+                    uploaded_data[label].append(df)
+
+                    csv = df.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button(
+                        label=f"📥 {label}_{idx+1} download converted file (CSV)",
+                        data=csv,
+                        file_name=f"{label}_{idx+1}_converted.csv",
+                        mime='text/csv'
+                    )
                 except Exception as e:
                     st.warning(f"❗ Error processing {label}: {e}")
                     continue
 
-                uploaded_data[label].append(df)
+# === Wistron Tool 파일 업로드 UI 영역 ===
+cols = st.columns([5, 2.5, 5])  # 가운데만 사용
 
-                csv = df.to_csv(index=False).encode('utf-8-sig')
-                st.download_button(
-                    label=f"📥 {label}_{idx+1} download converted file (CSV)",
-                    data=csv,
-                    file_name=f"{label}_{idx+1}_converted.csv",
-                    mime='text/csv'
-                )
+with cols[1]:
+    label = "Wistron Tool"
+    st.markdown(f"<h5 style='text-align:center;'>📁 {label}</h5>", unsafe_allow_html=True)
+    uploaded_files = st.file_uploader(
+        label=" ",
+        accept_multiple_files=True,
+        key=f"file_{label}",
+        label_visibility="collapsed"
+    )
+
+    if uploaded_files:
+        uploaded_data[label] = []
+        for idx, f in enumerate(uploaded_files):
+            try:
+                df, _ = convert_wistron_tool_file(f)
+                if df is not None:
+                    uploaded_data[label].append(df)
+                    csv = df.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button(
+                        label=f"📥 {label}_{idx+1} download converted file (CSV)",
+                        data=csv,
+                        file_name=f"{label}_{idx+1}_converted.csv",
+                        mime='text/csv'
+                    )
+            except Exception as e:
+                st.warning(f"❗ Error processing {label}: {e}")
+                continue
 
 # === 2. Run Conversion Condition Check ===
-
-valid_uploaded_count = sum(1 for label in file_labels if label in uploaded_data and uploaded_data[label])
+valid_uploaded_count = sum(1 for label in uploaded_data if uploaded_data[label])
 
 if "run_conversion" not in st.session_state:
     st.session_state.run_conversion = False
@@ -259,6 +325,7 @@ if st.session_state.run_conversion:
                                 df = df.copy()
                                 df["Time"] = converted
                                 return df.dropna(subset=["Time"]).sort_values("Time").reset_index(drop=True)
+                            st.write(f"⌛ Parsing time column '{col}' →", df[col].head(5))
                         except Exception:
                             continue
                 raise ValueError("No valid Time column found")
@@ -398,7 +465,7 @@ if st.session_state.x_axis and visible_all:
             y=[col for col in visible_all if col in combined_df.columns],
             title=f"{plot_mode} Mode Chart"
         )
-st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
 
 
 
