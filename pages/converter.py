@@ -8,6 +8,18 @@ import os
 
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
+# 修正済みのCSS（<a>タグに対して）
+st.markdown("""
+    <style>
+    div.stDownloadButton > button {
+        width: 100%;
+        padding: 1rem;
+        font-size: 1.2rem;
+        background-color: crimson;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # === THI parser ===
 def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
     header = [
@@ -45,32 +57,32 @@ def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
     df["ATM"] = df["ATM"].astype(str)
     return df
 # === Wistron tool Parser ===
-def convert_wistron_tool_file(uploaded_file):
-    if uploaded_file is None:
-        st.warning("⚠️ Wistron Tool file not uploaded.")
-        return None, None
+# def convert_wistron_tool_file(uploaded_file):
+#     if uploaded_file is None:
+#         st.warning("⚠️ Wistron Tool file not uploaded.")
+#         return None, None
 
-    try:
-        content = uploaded_file.read().decode('utf-8', errors='ignore')
-        df = pd.read_csv(StringIO(content), sep="\t")
+#     try:
+#         content = uploaded_file.read().decode('utf-8', errors='ignore')
+#         df = pd.read_csv(StringIO(content), sep="\t")
 
-        # ✅ Time 컬럼을 문자열 "HH:MM:SS" 형식으로 변환
-        time_col = df.columns[0]
-        df[time_col] = pd.to_datetime(df[time_col], format="%H:%M:%S", errors='coerce')
-        df[time_col] = df[time_col].dt.strftime("%H:%M:%S")
+#         # ✅ Time 컬럼을 문자열 "HH:MM:SS" 형식으로 변환
+#         time_col = df.columns[0]
+#         df[time_col] = pd.to_datetime(df[time_col], format="%H:%M:%S", errors='coerce')
+#         df[time_col] = df[time_col].dt.strftime("%H:%M:%S")
 
-    except Exception as e:
-        st.error(f"❌ Failed to read Wistron Tool file: {e}")
-        return None, None
+#     except Exception as e:
+#         st.error(f"❌ Failed to read Wistron Tool file: {e}")
+#         return None, None
 
-    def convert_df_to_excel(df):
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Wistron Tool Log')
-        return output.getvalue()
+#     def convert_df_to_excel(df):
+#         output = BytesIO()
+#         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+#             df.to_excel(writer, index=False, sheet_name='Wistron Tool Log')
+#         return output.getvalue()
 
-    excel_data = convert_df_to_excel(df)
-    return df, excel_data
+#     excel_data = convert_df_to_excel(df)
+#     return df, excel_data
 
 
 # === Logger Parser ===
@@ -262,37 +274,65 @@ for i, label in enumerate(file_labels):
                     continue
 
 # === Wistron Tool 파일 업로드 UI 영역 ===
-cols = st.columns([5, 2.5, 5])  # 가운데만 사용
+cols = st.columns([2.5,2.5,2.5, 2.5, 2.5])  # 가운데만 사용
 
-with cols[1]:
-    label = "Wistron Tool"
+with cols[0]:
+    label = ""
     st.markdown(f"<h5 style='text-align:center;'>📁 {label}</h5>", unsafe_allow_html=True)
-    uploaded_files = st.file_uploader(
-        label=" ",
-        accept_multiple_files=True,
-        key=f"file_{label}",
-        label_visibility="collapsed"
-    )
+with cols[1]:
+    label = "Coming GPUmon"
+    st.markdown(f"<h5 style='text-align:center;'>📁 {label}</h5>", unsafe_allow_html=True)
+with cols[2]:
+    label = "Coming Wistron Tool"
+    st.markdown(f"<h5 style='text-align:center;'>📁 {label}</h5>", unsafe_allow_html=True)
+with cols[3]:
+    label = ""
+    st.markdown(f"<h5 style='text-align:center;'>📁 {label}</h5>", unsafe_allow_html=True)
+with cols[4]:
+    label = ""
+    st.markdown(f"<h5 style='text-align:center;'>📁 {label}</h5>", unsafe_allow_html=True)
+    # uploaded_files = st.file_uploader(
+    #     label=" ",
+    #     accept_multiple_files=True,
+    #     key=f"file_{label}",
+    #     label_visibility="collapsed"
+    # )
 
-    if uploaded_files:
-        uploaded_data[label] = []
-        for idx, f in enumerate(uploaded_files):
-            try:
-                df, _ = convert_wistron_tool_file(f)
-                if df is not None:
-                    uploaded_data[label].append(df)
-                    csv = df.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button(
-                        label=f"📥 {label}_{idx+1} download converted file (CSV)",
-                        data=csv,
-                        file_name=f"{label}_{idx+1}_converted.csv",
-                        mime='text/csv'
-                    )
-            except Exception as e:
-                st.warning(f"❗ Error processing {label}: {e}")
-                continue
+    # if uploaded_files:
+    #     uploaded_data[label] = []
+    #     for idx, f in enumerate(uploaded_files):
+    #         try:
+    #             df, _ = convert_wistron_tool_file(f)
+    #             if df is not None:
+    #                 uploaded_data[label].append(df)
+    #                 csv = df.to_csv(index=False).encode('utf-8-sig')
+    #                 st.download_button(
+    #                     label=f"📥 {label}_{idx+1} download converted file (CSV)",
+    #                     data=csv,
+    #                     file_name=f"{label}_{idx+1}_converted.csv",
+    #                     mime='text/csv'
+    #                 )
+    #         except Exception as e:
+    #             st.warning(f"❗ Error processing {label}: {e}")
+    #             continue
 
 # === 2. Run Conversion Condition Check ===
+st.markdown("""
+            <style>
+            div.stButton > button {
+                width: 100%;
+                padding: 1rem;
+                font-size: 1.2rem;
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 8px;
+            }
+            div.stButton > button:hover {
+                background-color: #218838;
+            }
+            </style>
+        """, unsafe_allow_html=True)
 valid_uploaded_count = sum(1 for label in uploaded_data if uploaded_data[label])
 
 if "run_conversion" not in st.session_state:
@@ -301,14 +341,36 @@ if "run_conversion" not in st.session_state:
 if st.session_state.get("run_conversion", False):
     st.session_state.run_conversion = False
 
-if st.button("▶️ Run Conversion"):
-    if valid_uploaded_count >= 2:
-        st.session_state.run_conversion = True
-    else:
-        st.warning("⚠️ Please upload at least 2 different log types before running conversion.")
+# ✅ 横並びにする
+col1, col2 ,col3= st.columns([2,4,2])
+with col1:
+    plot_mode = st.radio("Select plotting mode", ["Segment", "Merged"], horizontal=True)
+
+with col2:
+    # ✅ 緑色ボタンスタイル
+    run_style = """
+    <style>
+    div[data-testid="stButton"] button {
+        background-color: #28a745;
+        color: white;
+        border: none;
+        padding: 0.6em 1.2em;
+        font-size: 1rem;
+        font-weight: bold;
+        border-radius: 0.3em;
+        margin-top: 1.8em;
+    }
+    </style>
+    """
+    st.markdown(run_style, unsafe_allow_html=True)
+    if st.button("🚀 Run Conversion"):
+        if valid_uploaded_count >= 2:
+            st.session_state.run_conversion = True
+        else:
+            st.warning("⚠️ Please upload at least 2 different log types before running conversion.")
+
 
 # === 3. Conversion Output & Plotly Graph Settings ===
-
 if st.session_state.run_conversion:
     st.subheader("🔗 Auto Merge Logs (Triggered by ▶️ Run Conversion)")
 
@@ -357,12 +419,15 @@ if st.session_state.run_conversion:
             st.success("✅ Merge completed successfully!")
 
             csv_merged = merged_df.to_csv(index=False, encoding="utf-8-sig")
-            st.download_button(
-                label="📥 Download Merged CSV",
-                data=csv_merged,
-                file_name="merged_logs.csv",
-                mime="text/csv"
-            )
+
+            col1, col2 ,col3= st.columns([2,4,2])
+            with col1:
+                st.download_button(
+                    label="📥 Download Merged CSV",
+                    data=csv_merged,
+                    file_name="merged_logs.csv",
+                    mime="text/csv"
+                )
 
         except Exception as e:
             st.error(f"❌ Merge failed during conversion: {e}")
@@ -375,8 +440,6 @@ if st.session_state.run_conversion:
 
     # === 이후 Plotly 그래프 출력 ===
 st.subheader("📈 Plotly Graph Settings")
-
-plot_mode = st.radio("Select plotting mode", ["Segment", "Merged"], horizontal=True)
 
 if plot_mode == "Segment":
     all_columns = sorted(set().union(*[df.columns.tolist() for dfs in uploaded_data.values() for df in dfs]))
@@ -466,6 +529,26 @@ if st.session_state.x_axis and visible_all:
             title=f"{plot_mode} Mode Chart"
         )
         st.plotly_chart(fig, use_container_width=True)
+
+
+        # Download Excel の出力と配置
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            combined_df.to_excel(writer, index=False, sheet_name='Selected XY Data')
+
+        col1, col2, col3 = st.columns([2, 4, 2])
+        with col2:
+            with st.container():
+                st.markdown('<div class="centered-download">', unsafe_allow_html=True)
+                st.download_button(
+                    label="📥 Download Selected XY Columns (Excel)",
+                    data=output.getvalue(),
+                    file_name="selected_xy_data.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_xy_excel"
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
+
 
 
 
