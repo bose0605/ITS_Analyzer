@@ -52,7 +52,7 @@ if times_fonts:
     plt.rcParams["font.family"] = fm.FontProperties(fname=times_fonts[0]).get_name()
 
 if "colormap_name" not in st.session_state:
-    st.session_state["colormap_name"] ="jet"
+    st.session_state["colormap_name"] ="gist_ncar"
 
 # 🌈 虹色ライン
 st.markdown("""
@@ -395,7 +395,7 @@ with st.sidebar.expander("4️⃣ 2nd Y-axis setting", expanded=True):
 
     if use_secondary_axis:
         secondary_y_axis_title = st.text_input("2nd X-axis title", value="Temperature (deg)", key="y2_title")
-        secondary_tick_step = st.number_input("2nd Y-axis title", min_value=1, value=5, key="y2_tick_step")
+        secondary_tick_step = st.number_input("2nd Y-axis title", min_value=1, value=5, key="secondary_tick_step")
 
         y2_max_data = int(df.select_dtypes(include='number').max().max() * 1.1)
         y2_max = st.number_input("2nd Y-axis upper limit\n(For saving chart)", min_value=1, value=y2_max_data if y2_max_data < 10000 else 100, key="y2_max")
@@ -883,10 +883,14 @@ with tabs[0]:
             fig_freq.add_trace(go.Scatter(
                 x=time_vals,
                 y=df[col],
-                mode='lines' if is_pcore else 'markers',
+                mode='lines',
                 name=col,
-                line=dict(color=color_map_ui[col]) if is_pcore else dict(color=color_map_ui[col], width=0),
-                marker=dict(symbol="circle" if is_pcore else "cross", size=8),
+                line=dict(color=color_map_ui[col]),
+                marker=dict(symbol="circle", size=8),
+                ### Ecoreをmarkerにする以下行
+                # mode='lines' if is_pcore else 'markers',
+                # line=dict(color=color_map_ui[col]) if is_pcore else dict(color=color_map_ui[col], width=0),
+                # marker=dict(symbol="circle" if is_pcore else "circle", size=8),
             ))
 
         if df[col].max() > 8000:
@@ -979,10 +983,14 @@ with tabs[1]:
             fig_temp.add_trace(go.Scatter(
                 x=time_vals,
                 y=df[col],
-                mode='lines' if is_pcore else 'markers',
+                mode='lines',
                 name=col,
-                line=dict(color=color_map_ui[col]) if is_pcore else dict(color=color_map_ui[col], width=0),
-                marker=dict(symbol="circle" if is_pcore else "cross", size=8),
+                line=dict(color=color_map_ui[col]),
+                marker=dict(symbol="circle", size=8),
+                ### Ecoreをmarkerにする以下行
+                # mode='lines' if is_pcore else 'markers',
+                # line=dict(color=color_map_ui[col]) if is_pcore else dict(color=color_map_ui[col], width=0),
+                # marker=dict(symbol="circle" if is_pcore else "circle", size=8),
             ))
 
             if df[col].max() > 130:
@@ -1279,26 +1287,28 @@ with tabs[5]:
 
     has_data = False  # ← プロット有無の確認用フラグ
 
+    # EPP → 第1軸
     if epp_col:
         df[epp_col] = df[epp_col].apply(lambda x: round(x / 2.55) if pd.notnull(x) else x)
         fig_epp.add_trace(go.Scatter(
             x=time_vals,
             y=df[epp_col],
             mode="lines",
-            name=epp_col,
+            name="EPP",
             yaxis="y1",
             line=dict(color="purple")
         ))
         has_data = True
 
+    # OEM18 → 第2軸
     if oem_col:
         fig_epp.add_trace(go.Scatter(
             x=time_vals,
             y=df[oem_col],
             mode="markers",
-            name=oem_col,
-            yaxis="y2" if epp_col else "y1",
-            line=dict(color="green")
+            name="OEM18",
+            yaxis="y2",
+            marker=dict(color="green")
         ))
         has_data = True
 
@@ -1309,7 +1319,7 @@ with tabs[5]:
             margin=dict(l=50, r=100, t=50, b=50),
             xaxis=dict(title="Time", tickfont=dict(size=16)),
             yaxis=dict(
-                title=dict(text=epp_col if epp_col else oem_col, font=dict(size=16)),
+                title=dict(text="EPP", font=dict(size=16)),
                 tickfont=dict(size=14),
                 dtick=5,
                 gridcolor='rgba(200, 150, 255, 0.17)'
@@ -1326,7 +1336,7 @@ with tabs[5]:
                 tickmode='linear',
                 tick0=0,
                 dtick=1
-            ),
+            )
             updatemenus=[
                 dict(
                     type="buttons",
@@ -1368,7 +1378,7 @@ with tabs[5]:
                 )
             ]
     
-        # fig_epp.update_layout(**layout)
+        fig_epp.update_layout(**layout)
         st.plotly_chart(fig_epp, use_container_width=True)
 
         # 画像表示（DYTCテーブル）
@@ -1399,7 +1409,7 @@ with tabs[5]:
             <tr><td>Energy saver</td><td>2</td><td>2</td><td>1</td><td>1</td></tr>
             <tr><td>Best Power Efficiency</td><td>3</td><td>4</td><td>2</td><td>2</td></tr>
             <tr><td>Balanced</td><td>5</td><td>6</td><td>3</td><td>3</td></tr>
-            <tr><td>Best Performance</td><td>7</td><td>8</td><td>4</td><td>4</td></tr>
+            <tr><td>Cool mode</td><td>9</td><td>10</td><td>5</td><td>5</td></tr>
         </tbody>
         </table>
         """
