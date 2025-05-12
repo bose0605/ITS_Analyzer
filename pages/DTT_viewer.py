@@ -91,9 +91,9 @@ st.markdown("""
   height: 8px;
   border: none;
   border-radius: 3px;
-  background: linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet);
-  margin-top: 20px;
-  margin-bottom: 26px;
+  background: linear-gradient(to right, #ff1493, #0000cd, #ffdab9, #00fa9a, #ff8c00,#cd5c5c);
+  margin-top: 10px;
+  margin-bottom: 4px;
 ">
 """, unsafe_allow_html=True)
 
@@ -265,8 +265,8 @@ with st.sidebar.expander("4️⃣ 2nd Y-axis setting", expanded=True):
     use_secondary_axis = st.toggle("Utilize 2nd Y-axis", value=False, key="use_secondary_axis")
 
     if use_secondary_axis:
-        secondary_y_axis_title = st.text_input("2nd X-axis title", value="Temperature (deg)", key="y2_title")
-        secondary_tick_step = st.number_input("2nd Y-axis title", min_value=1, value=5, key="y2_tick_step")
+        secondary_y_axis_title = st.text_input("2nd Y-axis title", value="Temperature (deg)", key="y2_title")
+        secondary_tick_step = st.number_input("2nd Y-axis ticks", min_value=1, value=5, key="secondary_tick_step")
 
         y2_max_data = int(df.select_dtypes(include='number').max().max() * 1.1)
         y2_max = st.number_input("2nd Y-axis upper limit\n(For saving chart)", min_value=1, value=y2_max_data if y2_max_data < 10000 else 100, key="y2_max")
@@ -338,7 +338,7 @@ if "show_avg_lines" not in st.session_state:
     st.session_state.show_avg_lines = False
 
 #===== グラフ化のための変換コード
-def export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols):
+def export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols, power_cols, epp_col=None, os_power_col=None):
     output = BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     worksheet = workbook.add_worksheet("Data")
@@ -398,6 +398,71 @@ def export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols):
     chart2.set_y_axis({'name': 'Temperature (°C)'})
     worksheet.insert_chart(9, temp_start_col, chart2, {"x_scale": 1.6, "y_scale": 1.9})
 
+    # --- グレー塗りつぶし2列 ---
+    power_start_col = temp_start_col + len(temp_cols) + 2
+    worksheet.set_column(power_start_col - 2, power_start_col - 1, 4, gray_fill)
+
+    # --- Powerlimitデータ書き込み ---
+    for idx, col in enumerate(power_cols):
+        worksheet.write(0, power_start_col + idx, col, header_format)
+
+    for row_idx, row in enumerate(df[[time_col] + power_cols].itertuples(index=False), start=1):
+        for col_idx, val in enumerate(row[1:]):
+            worksheet.write(row_idx, power_start_col + col_idx, val)
+
+    # --- Powerlimitグラフ描き込み ---
+    chart3 = workbook.add_chart({'type': 'line'})
+    for idx, col in enumerate(power_cols):
+        chart3.add_series({
+            'name': ['Data', 0, power_start_col + idx],
+            'categories': ['Data', 1, 0, len(df), 0],
+            'values': ['Data', 1, power_start_col + idx, len(df), power_start_col + idx],
+            'line': {'color': get_color_hex(cm.get_cmap(colormap_name), idx, len(power_cols))}
+        })
+    chart3.set_title({'name': 'Power Limit Chart'})
+    chart3.set_x_axis({'name': 'Time'})
+    chart3.set_y_axis({'name': 'Power (W)'})
+    worksheet.insert_chart(9, power_start_col, chart3, {"x_scale": 1.6, "y_scale": 1.9})
+
+        # --- グレー塗りつぶし2列（Powerlimitの右） ---
+    epp_start_col = power_start_col + len(power_cols) + 2
+    worksheet.set_column(epp_start_col - 2, epp_start_col - 1, 4, gray_fill)
+
+    # --- EPP & Mode データ書き込み ---
+    epp_cols = []
+    if epp_col:
+        epp_cols.append(epp_col)
+    if os_power_col:
+        epp_cols.append(os_power_col)
+
+    for idx, col in enumerate(epp_cols):
+        worksheet.write(0, epp_start_col + idx, col, header_format)
+
+    for row_idx, row in enumerate(df[[time_col] + epp_cols].itertuples(index=False), start=1):
+        for col_idx, val in enumerate(row[1:]):
+            worksheet.write(row_idx, epp_start_col + col_idx, val)
+
+    # --- グラフ描画（もし両方あれば） ---
+    if epp_col and os_power_col:
+        chart4 = workbook.add_chart({'type': 'line'})
+        chart4.add_series({
+            'name': ['Data', 0, epp_start_col],
+            'categories': ['Data', 1, 0, len(df), 0],
+            'values': ['Data', 1, epp_start_col, len(df), epp_start_col],
+            'line': {'color': '#800080'}  # purple
+        })
+        chart4.add_series({
+            'name': ['Data', 0, epp_start_col + 1],
+            'categories': ['Data', 1, 0, len(df), 0],
+            'values': ['Data', 1, epp_start_col + 1, len(df), epp_start_col + 1],
+            'line': {'color': '#228B22'},  # green
+            'marker': {'type': 'circle', 'size': 5}
+        })
+        chart4.set_title({'name': 'EPP & Power Mode'})
+        chart4.set_x_axis({'name': 'Time'})
+        chart4.set_y_axis({'name': 'EPP / Power Mode'})
+        worksheet.insert_chart(9, epp_start_col, chart4, {"x_scale": 1.6, "y_scale": 1.9})
+
     workbook.close()
     output.seek(0)
     return output
@@ -427,17 +492,55 @@ for j, col in enumerate(secondary_y_cols):
         x=time_vals,
         y=df[col],
         name=col,
-        line=dict(
-            color=get_color_hex(colormap, len(selected_y_cols) + j, total_lines),  # ← 同じ関数で
-            dash=style.get("dash")
+        mode="markers",
+        marker=dict(
+            color=get_color_hex(colormap, len(selected_y_cols) + j, total_lines),
+            size=6,
+            symbol="circle"
         ),
-        mode="lines+markers" if style.get("marker") else "lines",
-        marker=dict(symbol=style.get("marker")) if style.get("marker") else None,
         yaxis="y2",
         legendgroup="group2",
         showlegend=True
     ))
 
+
+
+st.markdown("""
+<style>
+div.stDownloadButton > button {
+    background-color: crimson;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    transition: background-color 0.3s;
+}
+div.stDownloadButton > button:hover {
+    background-color: #105d96;
+}
+</style>
+""", unsafe_allow_html=True)
+# Powerlimit用の列（tabs[1]でも使っている同じ列セット）
+power_cols = [
+    "TCPU_D0_Current Power(W)", "TCPU_D1_Current Power(W)", "TCPU_D2_Current Power(W)",
+    "TCPU_PL1 Limit(W)", "TCPU_PL1 Min Power Limit(W)", "TCPU_PL1 Max Power Limit(W)",
+    "TCPU_PL2 Limit(W)"
+]
+
+power_cols = [col for col in power_cols if col in df.columns]  # 実在列だけ抽出
+epp_col = next((col for col in df.columns if "epp" in col.lower()), None)
+os_power_col = next((col for col in df.columns if "os power slider" in col.lower()), None)
+towrite = export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols, power_cols, epp_col, os_power_col)
+
+
+xlsx_filename = file.replace(".csv", ".xlsx")
+st.download_button(
+    label="📥 To XLSX Output (with Charts)",
+    data=towrite.getvalue(),
+    file_name=xlsx_filename,
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 # ==== 📏 平均値と垂線表示用 toggle（Expanderの代替） ====
 show_avg = st.toggle("📏 Show the average value of the selected range", value=False)
 
@@ -456,7 +559,7 @@ if show_avg:
     if idx_start < idx_end and avg_target_col in df.columns:
         avg_val = df[avg_target_col].iloc[idx_start:idx_end+1].mean()
         with col4:
-            st.success(f"📏 {avg_target_col} の {idx_start}〜{idx_end} Average: {avg_val:.2f}")
+            st.success(f"📏 {avg_target_col} : {idx_start}〜{idx_end} Average: {avg_val:.2f}")
 
         x_start = time_vals.iloc[idx_start] if hasattr(time_vals, "iloc") else time_vals[idx_start]
         x_end = time_vals.iloc[idx_end] if hasattr(time_vals, "iloc") else time_vals[idx_end]
@@ -536,18 +639,10 @@ if st.session_state.get("use_secondary_axis", False):
         tickmode='linear',
         tick0=0,
         dtick=st.session_state.get("secondary_tick_step", 5),
-        range=[0, st.session_state.get("y2_max", 100)]
+        range=[0, st.session_state.get("y2_max", 100)],
+        showgrid=False
     )
 fig.update_layout(**layout_dict)
-
-towrite = export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols)
-xlsx_filename = file.replace(".csv", ".xlsx")
-st.download_button(
-    label="📥 To XLSX Output (with Charts)",
-    data=towrite.getvalue(),
-    file_name=xlsx_filename,
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
 
 st.plotly_chart(fig, use_container_width=True)
 
@@ -680,7 +775,7 @@ with st.expander("🎨 Matplotlib chart", expanded=False):
             ax.set_ylim(y_min, y_max)
             ax.set_yticks(yticks)
         else:
-            st.warning("第一縦軸の目盛が多すぎるため、自動スケーリングに切り替えました。")
+            st.warning("Turned auto scale due to much tickes.")
             ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=10))
 
         ax.tick_params(axis='x', labelsize=tick_font)
@@ -688,7 +783,7 @@ with st.expander("🎨 Matplotlib chart", expanded=False):
 
         st.pyplot(fig)
     except Exception as e:
-        st.error(f"グラフ描画中にエラーが発生しました: {e}")
+        st.error(f"Error: {e}")
 
 # ==== タブ表示・タイトル表示 ====
 st.markdown("""
