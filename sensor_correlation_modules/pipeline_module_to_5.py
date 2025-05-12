@@ -156,8 +156,8 @@ def full_logger_ptat_pipeline(
 
         with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
             df.to_excel(writer, sheet_name='Full Data', index=False)
-            cluster_df.to_excel(writer, sheet_name='Cluster 1 Split', index=False)
-            df_with_exp.to_excel(writer, sheet_name='Experiment Labeled', index=False)
+            # cluster_df.to_excel(writer, sheet_name='Cluster 1 Split', index=False)
+            # df_with_exp.to_excel(writer, sheet_name='Experiment Labeled', index=False)
             workbook = writer.book
             worksheet = workbook.add_worksheet('Graph')
             worksheet.insert_image('B2', image_path)
