@@ -1,4 +1,5 @@
 import sys
+from io import BytesIO
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import streamlit as st
@@ -56,6 +57,18 @@ button[data-testid="stDownloadButton-template-download"]:hover {
 </style>
 """, unsafe_allow_html=True)
 
+#st.download用CSS
+st.markdown("""
+    <style>
+    div.stDownloadButton > button {
+        width: 100%;
+        padding: 1rem;
+        font-size: 1.2rem;
+        background-color: crimson;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 col1, non_col, col2, = st.columns([3,1,2])
 with col1:
     st.title("📊 Sensor correlation analyzer")
@@ -91,7 +104,7 @@ with radio_col:
         st.session_state.segment_defaults_set = False
     def reset_segment_defaults():
         if st.session_state.split_mode == "4 segments":
-            st.session_state.segment_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None"]
+            st.session_state.segment_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None/other"]
         else:
             st.session_state.segment_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "pTAT+Fur+Charging"]
         st.session_state.segment_defaults_set = True
@@ -107,8 +120,8 @@ with radio_col:
 
 st.markdown("### 3️⃣ Select Segment Labels")
 segment_labels = ["1st segment", "2nd segment", "3rd segment", "4th segment", "5th segment"]
-default_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None"]
-select_options = ["None", "pTAT+Fur", "pTAT", "Fur", "Prime95", "pTAT+Fur+Charging"]
+default_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None/other"]
+select_options = ["None/other", "pTAT+Fur", "pTAT", "Fur", "Prime95", "pTAT+Fur+Charging"]
 
 # split_modeに応じて、デフォルト値を再初期化
 if not st.session_state.segment_defaults_set:
@@ -171,8 +184,6 @@ if logger_file and ptat_file:
                     )
 
                 if merged_df is not None:
-                    st.success("✅ Analysis Complete!")
-
                     with open(output_excel, "rb") as f:
                         st.session_state["excel_bytes"] = f.read()
                         st.session_state["excel_filename"] = output_name.strip() + ".xlsx"
@@ -242,20 +253,66 @@ if "excel_bytes" in st.session_state:
                 # 横幅3分割で中央カラムにボタン配置
                 left, center, right = st.columns([2, 3, 2])
                 with center:
-                    st.markdown("""
-                        <style>
-                        div.stDownloadButton > button {
-                            width: 100%;
-                            padding: 1rem;
-                            font-size: 1.2rem;
-                            background-color: crimson;
-                        }
-                        </style>
-                    """, unsafe_allow_html=True)
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                        # 既存シートのコピー
+                        df_all = pd.read_excel(BytesIO(st.session_state["excel_bytes"]), sheet_name=None)
+                        for sheet_name, sheet_df in df_all.items():
+                            sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+                        # UIで選ばれたセグメントラベルを列名に使って横並びに出力
+                        segment_data = {}
+                        if "Experiment" in df_filtered.columns:
+                            unique_exps = df_filtered["Experiment"].dropna().unique().tolist()
+                            num_segments = 4 if split_mode == "4 segments" else 5
+                            effective_segments = selected_segments[:num_segments]
+
+                            for i, exp in enumerate(unique_exps):
+                                if i >= len(effective_segments):
+                                    continue
+                                exp_label = effective_segments[i]
+                                exp_df = df_filtered[df_filtered["Experiment"] == exp]
+                                segment_data[f"{exp_label}_X"] = exp_df[col_x].reset_index(drop=True)
+                                segment_data[f"{exp_label}_Y"] = exp_df[col_y].reset_index(drop=True)
+
+                        segment_df = pd.DataFrame(segment_data)
+                        segment_df.to_excel(writer, sheet_name="Selected XY Data", index=False)
+                        df_all = pd.read_excel(BytesIO(st.session_state["excel_bytes"]), sheet_name=None)
+                        for sheet_name, sheet_df in df_all.items():
+                            if sheet_name != "Selected XY Data":  # 重複出力防止
+                                sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                        # --- 📈 グラフを追加 ---
+                        workbook  = writer.book
+                        worksheet = writer.sheets["Selected XY Data"]
+                        worksheet.activate()
+                        chart = workbook.add_chart({'type': 'scatter', 'subtype': 'marker'})
+
+                        max_row = len(segment_df)
+                        num_cols = segment_df.shape[1]
+
+                        for col in range(0, num_cols, 2):
+                            if col + 1 >= num_cols:
+                                break
+                            x_range = f"='Selected XY Data'!${chr(65+col)}$2:${chr(65+col)}${max_row+1}"
+                            y_range = f"='Selected XY Data'!${chr(65+col+1)}$2:${chr(65+col+1)}${max_row+1}"
+                            series_name = segment_df.columns[col+1]
+                            chart.add_series({
+                                'name':       series_name,
+                                'categories': x_range,
+                                'values':     y_range,
+                                'marker':     {'type': 'circle', 'size': 5},
+                                'line':       {'none': True}  # ← 🟢 線なし＝マーカーのみ
+                            })
+
+                        chart.set_title({'name': 'Segment XY Correlation'})
+                        chart.set_x_axis({'name': col_x})
+                        chart.set_y_axis({'name': col_y})
+                        chart.set_size({'width': 720, 'height': 480})
+                        worksheet.insert_chart("J2", chart)
                     st.download_button(
-                        label="📥 To XLSX Output",
-                        data=st.session_state["excel_bytes"],
-                        file_name=st.session_state["excel_filename"],
+                        label="📥 To XLSX Output (with XY)",
+                        data=output.getvalue(),
+                        file_name="sensor_correlation_output.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         key="centered-download"
                     )
