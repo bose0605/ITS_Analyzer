@@ -80,6 +80,8 @@ def full_logger_ptat_pipeline(
         df_ptat.dropna(subset=["Time"], inplace=True)
 
         start_time = max(df_logger["Time"].min(), df_ptat["Time"].min())
+        end_time = min(df_logger["Time"].max(), df_ptat["Time"].max())
+
         df_logger = df_logger[df_logger["Time"] >= start_time].copy()
         df_ptat = df_ptat[df_ptat["Time"] >= start_time].copy()
 
@@ -87,7 +89,10 @@ def full_logger_ptat_pipeline(
         df_ptat["Time"] = df_ptat["Time"].dt.strftime("%H:%M:%S")
 
         merged_df = pd.merge(df_ptat, df_logger, on="Time", how="inner")
-        return merged_df
+        start_str = start_time.strftime('%H:%M:%S')
+        end_str = end_time.strftime('%H:%M:%S')
+        print(f"🕒 Merge Time Range: {start_str} ~ {end_str}")
+        return merged_df, start_str, end_str
 
     def cluster_and_export(df, excel_path):
         df["Time"] = pd.to_datetime(df["Time"], format="%H:%M:%S", errors='coerce')
@@ -156,22 +161,39 @@ def full_logger_ptat_pipeline(
 
         with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
             df.to_excel(writer, sheet_name='Full Data', index=False)
-            # cluster_df.to_excel(writer, sheet_name='Cluster 1 Split', index=False)
-            # df_with_exp.to_excel(writer, sheet_name='Experiment Labeled', index=False)
+            cluster_df.to_excel(writer, sheet_name='Cluster 1 Split', index=False)
+            df_with_exp.to_excel(writer, sheet_name='Experiment Labeled', index=False)
             workbook = writer.book
             worksheet = workbook.add_worksheet('Graph')
             worksheet.insert_image('B2', image_path)
 
-    # 🔸 메인 실행 흐름
-    logger_utf8 = convert_to_utf8_csv(logger_input_raw)
-    ptat_utf8 = convert_to_utf8_csv(ptat_input_raw)
-    if not logger_utf8 or not ptat_utf8:
-        return None, []
+    logger_utf8 = convert_to_utf8_csv(logger_input_raw) if logger_input_raw else None
+    ptat_utf8 = convert_to_utf8_csv(ptat_input_raw) if ptat_input_raw else None
 
-    logger_filtered, logger_targets = extract_logger_columns(logger_utf8)
-    if not logger_filtered:
-        return None, []
+    if ptat_utf8 and not logger_utf8:
+        df_ptat = pd.read_csv(ptat_utf8, encoding='utf-8-sig')
+        df_ptat = df_ptat[ptat_columns]
+        
+        # 시간 컬럼 변환 (Logger 없이도 클러스터링 위해 필요)
+        df_ptat["Time"] = pd.to_datetime(df_ptat["Time"], format="%H:%M:%S", errors="coerce")
+        df_ptat = df_ptat.dropna(subset=["Time"]).copy()
+        df_ptat["Time"] = df_ptat["Time"].dt.strftime("%H:%M:%S")
+        
+        merged_df = df_ptat.copy()  # Logger 없이도 merge된 것처럼 처리
+        cluster_and_export(merged_df, merged_excel_output)  # ✅ 기존과 동일하게 분석+그래프 생성
+        start_time = merged_df["Time"].min()
+        end_time = merged_df["Time"].max()
+        return merged_df,[], start_time, end_time
 
-    merged_df = merge_and_save(logger_filtered, ptat_utf8, merged_excel_output)
-    cluster_and_export(merged_df, merged_excel_output)
-    return merged_df, logger_targets
+
+
+    # 둘 다 있을 경우: 기존 로직
+    if logger_utf8 and ptat_utf8:
+        logger_filtered, logger_targets = extract_logger_columns(logger_utf8)
+        if not logger_filtered:
+            return None, []
+        merged_df, start_time, end_time = merge_and_save(logger_filtered, ptat_utf8, merged_excel_output)
+        cluster_and_export(merged_df, merged_excel_output)
+        return merged_df, logger_targets, start_time, end_time
+
+    return None, [], None, None
