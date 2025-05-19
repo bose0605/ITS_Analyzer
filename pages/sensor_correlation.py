@@ -1,5 +1,4 @@
 import sys
-from io import BytesIO
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import streamlit as st
@@ -7,6 +6,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import tempfile
 import plotly.io as pio
+import xlsxwriter
+import pandas as pd
+from openpyxl import load_workbook
 from sensor_correlation_modules.pipeline_module_to_4 import full_logger_ptat_pipeline as pipeline_4
 from sensor_correlation_modules.pipeline_module_to_5 import full_logger_ptat_pipeline as pipeline_5
 
@@ -57,18 +59,6 @@ button[data-testid="stDownloadButton-template-download"]:hover {
 </style>
 """, unsafe_allow_html=True)
 
-#st.download用CSS
-st.markdown("""
-    <style>
-    div.stDownloadButton > button {
-        width: 100%;
-        padding: 1rem;
-        font-size: 1.2rem;
-        background-color: crimson;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 col1, non_col, col2, = st.columns([3,1,2])
 with col1:
     st.title("📊 Sensor correlation analyzer")
@@ -104,7 +94,7 @@ with radio_col:
         st.session_state.segment_defaults_set = False
     def reset_segment_defaults():
         if st.session_state.split_mode == "4 segments":
-            st.session_state.segment_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None/other"]
+            st.session_state.segment_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None"]
         else:
             st.session_state.segment_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "pTAT+Fur+Charging"]
         st.session_state.segment_defaults_set = True
@@ -120,8 +110,8 @@ with radio_col:
 
 st.markdown("### 3️⃣ Select Segment Labels")
 segment_labels = ["1st segment", "2nd segment", "3rd segment", "4th segment", "5th segment"]
-default_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None/other"]
-select_options = ["None/other", "pTAT+Fur", "pTAT", "Fur", "Prime95", "pTAT+Fur+Charging"]
+default_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None"]
+select_options = ["None", "pTAT+Fur", "pTAT", "Fur", "Prime95", "pTAT+Fur+Charging"]
 
 # split_modeに応じて、デフォルト値を再初期化
 if not st.session_state.segment_defaults_set:
@@ -138,6 +128,27 @@ for i in range(5):
             key=f"segment_select_{i}"
         )
         selected_segments.append(selected)
+
+
+def add_sensor_correlation_sheet(excel_path: str, df_corr: pd.DataFrame, col_x: str, col_y: str):
+    df_corr = df_corr.dropna(subset=[col_x, col_y])
+
+    if "Experiment" not in df_corr.columns:
+        return  # Experiment 컬럼 없으면 처리하지 않음
+
+    segments = df_corr["Experiment"].dropna().unique().tolist()
+    experiment_segments = []
+
+    for seg in segments:
+        seg_df = df_corr[df_corr["Experiment"] == seg][[col_x, col_y]].reset_index(drop=True).copy()
+        seg_df.columns = [f"{col_x} ({seg})", f"{col_y} ({seg})"]
+        experiment_segments.append(seg_df)
+
+    if experiment_segments:
+        combined_df = pd.concat(experiment_segments, axis=1)
+
+        with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+            combined_df.to_excel(writer, sheet_name="Sensor Correlation", index=False)
 
 output_name = ("Merged")
 
@@ -184,6 +195,8 @@ if logger_file and ptat_file:
                     )
 
                 if merged_df is not None:
+                    st.success("✅ Analysis Complete!")
+
                     with open(output_excel, "rb") as f:
                         st.session_state["excel_bytes"] = f.read()
                         st.session_state["excel_filename"] = output_name.strip() + ".xlsx"
@@ -253,69 +266,17 @@ if "excel_bytes" in st.session_state:
                 # 横幅3分割で中央カラムにボタン配置
                 left, center, right = st.columns([2, 3, 2])
                 with center:
-                    output = BytesIO()
-                    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                        # 既存シートのコピー
-                        df_all = pd.read_excel(BytesIO(st.session_state["excel_bytes"]), sheet_name=None)
-                        for sheet_name, sheet_df in df_all.items():
-                            sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
-
-                        # UIで選ばれたセグメントラベルを列名に使って横並びに出力
-                        segment_data = {}
-                        if "Experiment" in df_filtered.columns:
-                            unique_exps = df_filtered["Experiment"].dropna().unique().tolist()
-                            num_segments = 4 if split_mode == "4 segments" else 5
-                            effective_segments = selected_segments[:num_segments]
-
-                            for i, exp in enumerate(unique_exps):
-                                if i >= len(effective_segments):
-                                    continue
-                                exp_label = effective_segments[i]
-                                exp_df = df_filtered[df_filtered["Experiment"] == exp]
-                                segment_data[f"{exp_label}_X"] = exp_df[col_x].reset_index(drop=True)
-                                segment_data[f"{exp_label}_Y"] = exp_df[col_y].reset_index(drop=True)
-
-                        segment_df = pd.DataFrame(segment_data)
-                        segment_df.to_excel(writer, sheet_name="Selected XY Data", index=False)
-                        df_all = pd.read_excel(BytesIO(st.session_state["excel_bytes"]), sheet_name=None)
-                        for sheet_name, sheet_df in df_all.items():
-                            if sheet_name != "Selected XY Data":  # 重複出力防止
-                                sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
-                        # --- 📈 グラフを追加 ---
-                        workbook  = writer.book
-                        worksheet = writer.sheets["Selected XY Data"]
-                        worksheet.activate()
-                        chart = workbook.add_chart({'type': 'scatter', 'subtype': 'marker'})
-
-                        max_row = len(segment_df)
-                        num_cols = segment_df.shape[1]
-
-                        for col in range(0, num_cols, 2):
-                            if col + 1 >= num_cols:
-                                break
-                            x_range = f"='Selected XY Data'!${chr(65+col)}$2:${chr(65+col)}${max_row+1}"
-                            y_range = f"='Selected XY Data'!${chr(65+col+1)}$2:${chr(65+col+1)}${max_row+1}"
-                            series_name = segment_df.columns[col+1]
-                            chart.add_series({
-                                'name':       series_name,
-                                'categories': x_range,
-                                'values':     y_range,
-                                'marker':     {'type': 'circle', 'size': 5},
-                                'line':       {'none': True}  # ← 🟢 線なし＝マーカーのみ
-                            })
-
-                        chart.set_title({'name': 'Segment XY Correlation'})
-                        chart.set_x_axis({'name': col_x})
-                        chart.set_y_axis({'name': col_y})
-                        chart.set_size({'width': 720, 'height': 480})
-                        worksheet.insert_chart("J2", chart)
-                    st.download_button(
-                        label="📥 To XLSX Output (with XY)",
-                        data=output.getvalue(),
-                        file_name="sensor_correlation_output.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="centered-download"
-                    )
+                    st.markdown("""
+                        <style>
+                        div.stDownloadButton > button {
+                            width: 100%;
+                            padding: 1rem;
+                            font-size: 1.2rem;
+                            background-color: crimson;
+                        }
+                        </style>
+                    """, unsafe_allow_html=True)
+                    
 
                 color_map = {
                     "TAT+Fur": "blue",
@@ -380,6 +341,25 @@ if "excel_bytes" in st.session_state:
                 fig.update_xaxes(showgrid=show_grid)
                 fig.update_yaxes(showgrid=show_grid)
                 st.plotly_chart(fig, use_container_width=True)
+
+                # 기존 Merged.xlsx에 Sensor Correlation 시트 추가
+                add_sensor_correlation_sheet(
+                    excel_path=tmp_excel_path,
+                    df_corr=df_filtered,
+                    col_x=col_x,
+                    col_y=col_y
+                )
+
+                # 다운로드 버튼 (시트 포함 버전)
+                with open(tmp_excel_path, "rb") as f_corr:
+                    st.download_button(
+                        label="📥 Download with Sensor Correlation Sheet",
+                        data=f_corr.read(),
+                        file_name="Merged_with_Correlation.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="centered-download"
+                    )
+
                 # try:
                 #     png_bytes = pio.to_image(fig, format="png")
                 #     st.download_button("📥 Download Chart as PNG", data=png_bytes, file_name="chart.png", mime="image/png")
@@ -393,6 +373,10 @@ if "excel_bytes" in st.session_state:
                     st.dataframe(df[cols_to_show])
             else:
                 st.warning("At least two numeric columns are required.")
+        # 時間と電力のグラフ
+                # Sensor Correlation 내장 차트를 포함한 엑셀 파일 생성
+            
+
 
         with tabs[1]:
             power_cols = [col for col in df.columns if any(key in col for key in ["IA", "GT", "Package"])]
