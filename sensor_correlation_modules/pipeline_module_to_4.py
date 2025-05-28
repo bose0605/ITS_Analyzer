@@ -1,8 +1,10 @@
+
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 import xlsxwriter
+from openpyxl import load_workbook
 
 def full_logger_ptat_pipeline(
     logger_input_raw,
@@ -33,7 +35,7 @@ def full_logger_ptat_pipeline(
                     raise
             df.to_csv(output_file, index=False, encoding='utf-8-sig')
             return output_file
-        except:
+        except Exception as e:
             return None
 
     def extract_logger_columns(input_file, min_val=0, max_val=75, time_label="Time"):
@@ -56,7 +58,7 @@ def full_logger_ptat_pipeline(
                 col_values = pd.to_numeric(data[col], errors='coerce').dropna()
                 if not col_values.empty and col_values.between(min_val, max_val).all():
                     valid_columns.append(col)
-            except:
+            except Exception:
                 continue
 
         col_indices = [time_index] + valid_columns
@@ -64,10 +66,24 @@ def full_logger_ptat_pipeline(
         selected_headers = header_row[col_indices].copy()
         selected_headers.iloc[0] = time_label
         selected_data.columns = selected_headers
-        selected_data.to_csv(output_file, index=False, encoding='utf-8-sig')
+        selected_data = selected_data.rename(columns={time_label: "Time"})
+
+        # 🔸 시간 컬럼 처리 및 정렬
+        selected_data["Time"] = pd.to_datetime(selected_data["Time"], format="%H:%M:%S", errors="coerce")
+        selected_data = selected_data.dropna(subset=["Time"]).sort_values("Time").reset_index(drop=True)
+
+        # 🔸 1초 간격 확장
+        df_expanded = selected_data.loc[selected_data.index.repeat(2)].reset_index(drop=True)
+        df_expanded["Time"] = df_expanded["Time"] + pd.to_timedelta(df_expanded.index % 2, unit='s')
+        df_expanded.iloc[1::2, 1:] = df_expanded.iloc[::2, 1:].values
+        df_expanded = df_expanded.sort_values("Time").reset_index(drop=True)
+        df_expanded["Time"] = df_expanded["Time"].dt.strftime("%H:%M:%S")
+
+        # 🔸 저장
+        df_expanded.to_csv(output_file, index=False, encoding='utf-8-sig')
         return output_file, selected_headers[1:].tolist()
 
-    def merge_and_save(logger_path, ptat_path):
+    def merge_and_save(logger_path, ptat_path, output_excel):
         df_logger = pd.read_csv(logger_path, encoding='utf-8-sig')
         df_ptat = pd.read_csv(ptat_path, encoding='utf-8-sig')
 
@@ -86,17 +102,12 @@ def full_logger_ptat_pipeline(
         df_logger["Time"] = df_logger["Time"].dt.strftime("%H:%M:%S")
         df_ptat["Time"] = df_ptat["Time"].dt.strftime("%H:%M:%S")
 
-        return pd.merge(df_ptat, df_logger, on="Time", how="inner")
+        merged_df = pd.merge(df_ptat, df_logger, on="Time", how="inner")
+        return merged_df
 
     def cluster_and_export(df, excel_path):
         df["Time"] = pd.to_datetime(df["Time"], format="%H:%M:%S", errors='coerce')
         df = df.dropna(subset=["Time", "Power-Package Power(Watts)"]).reset_index(drop=True)
-        if df.empty or df[["Power-Package Power(Watts)"]].dropna().shape[0] < 5:
-            df["Experiment"] = None
-            with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
-                df.to_excel(writer, sheet_name='Experiment Labeled', index=False)
-            return
-
         df["Power_Smoothed"] = df["Power-Package Power(Watts)"].rolling(10, min_periods=1).mean()
         kmeans = KMeans(n_clusters=4, random_state=42, n_init='auto')
         df["Cluster"] = kmeans.fit_predict(df[["Power_Smoothed"]])
@@ -160,65 +171,45 @@ def full_logger_ptat_pipeline(
         plt.close()
 
         with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+            df["Time"] = pd.to_datetime(df["Time"], errors="coerce").dt.strftime("%H:%M:%S")
+            df_with_exp["Time"] = pd.to_datetime(df_with_exp["Time"], errors="coerce").dt.strftime("%H:%M:%S")
+
             df.to_excel(writer, sheet_name='Full Data', index=False)
-            cluster_df.to_excel(writer, sheet_name='Cluster 1 Split', index=False)
             df_with_exp.to_excel(writer, sheet_name='Experiment Labeled', index=False)
-            worksheet = writer.book.add_worksheet('Graph')
+
+            # Pivot 시트 생성
+            experiment_segments = []
+            for label in df_with_exp["Experiment"].dropna().unique():
+                segment = df_with_exp[df_with_exp["Experiment"] == label][["Time", "Power-Package Power(Watts)"]].copy()
+                segment["Time"] = pd.to_datetime(segment["Time"], errors="coerce").dt.strftime("%H:%M:%S")
+                segment.columns = [f"Time ({label})", f"Power ({label})"]
+                experiment_segments.append(segment.reset_index(drop=True))
+
+            pivoted_df = pd.concat(experiment_segments, axis=1)
+            pivoted_df.to_excel(writer, sheet_name="Experiment Pivoted", index=False)
+
+            # グラフ挿入
+            workbook = writer.book
+            worksheet = workbook.add_worksheet('Graph')
             worksheet.insert_image('B2', image_path)
-    logger_utf8 = convert_to_utf8_csv(logger_input_raw) if logger_input_raw else None
-    ptat_utf8 = convert_to_utf8_csv(ptat_input_raw) if ptat_input_raw else None
 
-    # Ensure experiment_labels is defined
-    experiment_labels = ["TAT+Fur", "TAT", "Fur", "Prime95"]
+        # === Step 2: openpyxl で開き直して veryHidden を設定 ===
+        from openpyxl import load_workbook
+        wb = load_workbook(excel_path)
+        for sheetname in ["Experiment Labeled", "Experiment Pivoted"]:
+            if sheetname in wb.sheetnames:
+                ws = wb[sheetname]
+                ws.sheet_state = "veryHidden"
+        wb.save(excel_path)
+    logger_utf8 = convert_to_utf8_csv(logger_input_raw)
+    ptat_utf8 = convert_to_utf8_csv(ptat_input_raw)
+    if not logger_utf8 or not ptat_utf8:
+        return None, []
 
-    # Ensure df_with_exp is defined
-    df_with_exp = cluster_and_export(merged_df, merged_excel_output)
+    logger_filtered, logger_targets = extract_logger_columns(logger_utf8)
+    if not logger_filtered:
+        return None, []
 
-    # Prepare data for horizontal format with time and data columns for each label
-    experiment_data = []
-    for label in experiment_labels:
-        label_data = df_with_exp[df_with_exp["Experiment"] == label][["Time", "Power-Package Power(Watts)"]]
-        label_data.columns = [f"{label} Time", f"{label} Data"]
-        experiment_data.append(label_data.reset_index(drop=True))
-
-    # Ensure experiment_data is not empty
-    if not experiment_data:
-        raise ValueError("No data available for concatenation.")
-
-    # Concatenate all label data side by side
-    combined_df = pd.concat(experiment_data, axis=1)
-
-    # Save the formatted data to the Excel file
-    with pd.ExcelWriter(merged_excel_output, engine='xlsxwriter') as writer:
-        combined_df.to_excel(writer, sheet_name='Experiment Labeled', index=False)
-
-    if logger_utf8 and ptat_utf8:
-        logger_filtered, logger_targets = extract_logger_columns(logger_utf8)
-        if not logger_filtered:
-            return None, []
-        merged_df = merge_and_save(logger_filtered, ptat_utf8)
-        cluster_and_export(merged_df, merged_excel_output)
-        return merged_df, logger_targets
-
-    elif ptat_utf8:
-        df_ptat = pd.read_csv(ptat_utf8, encoding='utf-8-sig')
-        filtered_columns = [col for col in ptat_columns if col in df_ptat.columns]
-        df_ptat = df_ptat[filtered_columns]
-        df_ptat["Time"] = df_ptat["Time"].astype(str).str.strip().str.split(":").str[:3].str.join(":")
-        df_ptat["Time"] = pd.to_datetime(df_ptat["Time"], format="%H:%M:%S", errors="coerce")
-        df_ptat["Power-Package Power(Watts)"] = pd.to_numeric(df_ptat["Power-Package Power(Watts)"], errors='coerce')
-        df_ptat = df_ptat.dropna(subset=["Time", "Power-Package Power(Watts)"]).copy()
-        df_ptat["Time"] = df_ptat["Time"].dt.strftime("%H:%M:%S")
-        cluster_and_export(df_ptat, merged_excel_output)
-        return df_ptat, []
-
-    elif logger_utf8:
-        logger_filtered, logger_targets = extract_logger_columns(logger_utf8)
-        if not logger_filtered:
-            return None, []
-        df_logger = pd.read_csv(logger_filtered, encoding='utf-8-sig')
-        with pd.ExcelWriter(merged_excel_output, engine='xlsxwriter') as writer:
-            df_logger.to_excel(writer, sheet_name='Experiment Labeled', index=False)
-        return df_logger, logger_targets
-
-    return None, []
+    merged_df = merge_and_save(logger_filtered, ptat_utf8, merged_excel_output)
+    cluster_and_export(merged_df, merged_excel_output)
+    return merged_df, logger_targets
