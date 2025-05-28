@@ -10,7 +10,8 @@ import os
 import plotly.colors  # ファイル先頭付近でimport済みでなければ追加
 import matplotlib.pyplot as plt  
 import matplotlib as mpl
-from streamlit_tags import st_tags  # 必要に応じてインポートを追加
+import matplotlib.colors as mcolors  # mcolorsをインポート
+from streamlit_tags import st_tags  # 必要に応じてインポート
 
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
@@ -383,7 +384,7 @@ st.markdown("""
 # === 2. Run Conversion Condition Check ===
 valid_uploaded_count = sum(1 for label in uploaded_data if uploaded_data[label])
 
-plot_mode = st.radio("Select plotting mode", ["Segment", "Merged"], horizontal=True)
+plot_mode = st.radio("Select plotting mode (Segment : Not create merged time column, Merged : Create 'Time (Merged)' column", ["Segment", "Merged"], horizontal=True)
 if "run_conversion" not in st.session_state:
     st.session_state.run_conversion = False
         # CSSで横長スタイルに
@@ -493,7 +494,6 @@ if st.session_state.run_conversion:
             )
 
         # Add Y-axis column (5×2配置)
-        st.markdown("### Add Y-axis column")
         y_axis_cols_row1 = st.columns(len(file_labels))  # 1行目: 각 업로더
         y_axis_cols_row2 = st.columns(5)  # 2행目: Wistron Tool + GPU mon + 空白3つ
 
@@ -579,25 +579,58 @@ if st.session_state.run_conversion:
         )
 
         # ▼▼▼ ここからPlotlyグラフ描画 ▼▼▼
-        st.markdown("---")
-        st.subheader("📊 Plotly Chart")
 
-        x_col = st.session_state.get("x_axis")
-        y_cols = st.session_state.get("selected_columns", [])
+        with st.expander(":hammer_and_wrench: Chart options", expanded=False):  # Expanderを追加
+            # カラーマップ選択
+            colormap_list = sorted(plt.colormaps())
+            default_cmap = "viridis"
+
+            if "plotly_colormap" not in st.session_state:
+                st.session_state["plotly_colormap"] = default_cmap
+
+            selected_cmap = st.selectbox(
+                "🎨Choose colormap for the Chart",
+                colormap_list,
+                index=colormap_list.index(st.session_state["plotly_colormap"]),
+                key="plotly_colormap_select"
+            )
+
+            # 選択されたカラーマップをセッションステートに保存
+            st.session_state["plotly_colormap"] = selected_cmap
+
+            # カラーマップを取得
+            cmap = plt.get_cmap(st.session_state["plotly_colormap"])
+
+            # X軸とY軸の列を取得
+            x_col = st.session_state.get("x_axis")
+            y_cols = st.session_state.get("selected_columns", [])
+
+            # 2段組みのテキスト入力を追加
+            x_y_title_cols = st.columns(2)
+            with x_y_title_cols[0]:
+                x_axis_title = st.text_input("X-axis title", value="X-axis", key="x_axis_title")
+            with x_y_title_cols[1]:
+                y_axis_title = st.text_input("Y-axis title", value="Y-axis", key="y_axis_title")
 
         if plot_df is not None and x_col and y_cols:
             fig = go.Figure()
-            for y in y_cols:
+
+            # データ数に依存する配色
+            for i, y in enumerate(y_cols):
                 if y in plot_df.columns:
+                    color = mcolors.to_hex(cmap(i / max(len(y_cols) - 1, 1)))  # データ数に基づく色を取得
                     fig.add_trace(go.Scatter(
                         x=plot_df[x_col],
                         y=plot_df[y],
                         mode="lines",
-                        name=y
+                        name=y,
+                        line=dict(color=color)
                     ))
+
+            # X軸とY軸のタイトルを設定
             fig.update_layout(
-                xaxis_title=x_col,
-                yaxis_title=" / ".join(y_cols),
+                xaxis_title=x_axis_title,
+                yaxis_title=y_axis_title,
                 legend_title="Y Columns",
                 height=500,
                 margin=dict(l=40, r=40, t=40, b=40)
