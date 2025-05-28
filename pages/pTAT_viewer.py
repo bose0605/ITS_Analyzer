@@ -11,6 +11,7 @@ import re
 import textwrap
 import matplotlib.font_manager as fm
 import xlsxwriter
+import chardet
 st.set_page_config(layout="wide")
 
 top_col_right = st.columns([8, 1])
@@ -35,6 +36,16 @@ with top_col_right[1]:
 
 # ✅ 画像ファイルのパスを指定（アプリと同じディレクトリにある想定）
 # set_background("1938176.jpg")
+def update_y2_max_if_needed(df, secondary_cols, default=100):
+    key = "y2_max"
+    if not secondary_cols:
+        return
+    try:
+        max_val = int(df[secondary_cols].max().max() * 1.1)
+        if key not in st.session_state or st.session_state[key] == default:
+            st.session_state[key] = max_val if max_val < 10000 else default
+    except Exception:
+        pass
 
 def sanitize_key(text: str) -> str:
     return re.sub(r'\W+', '_', text)
@@ -122,14 +133,27 @@ with st.sidebar.expander("1️⃣ Choose your csv file", expanded=True):
 
 @st.cache_data
 def load_csv(file_obj):
+    # UTF-8（最速）
     try:
-        # 最初にUTF-8で読み込む（成功すれば速い）
-        return pd.read_csv(file_obj)
+        return pd.read_csv(file_obj, on_bad_lines='skip')
     except UnicodeDecodeError:
-        # 失敗したらShift-JISで再読み込み（リセット必要）
-        file_obj.seek(0)
-        return pd.read_csv(file_obj, encoding="shift_jis")
+        pass
 
+    # Shift_JIS（日本語Windows対策）
+    file_obj.seek(0)
+    try:
+        return pd.read_csv(file_obj, encoding="shift_jis", on_bad_lines='skip')
+    except UnicodeDecodeError:
+        pass
+
+    # 最後の手段として chardet
+    file_obj.seek(0)
+    raw = file_obj.read(100_000)  # ✅ 全体ではなく先頭10万バイトだけに制限（高速化）
+    result = chardet.detect(raw)
+    encoding = result["encoding"]
+
+    file_obj.seek(0)
+    return pd.read_csv(file_obj, encoding=encoding, on_bad_lines='skip')
 
 df = load_csv(uploaded_file)
 
@@ -154,7 +178,6 @@ def create_excel_combined_charts(df, time_col, chart_defs, color_map, secondary_
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     worksheet = workbook.add_worksheet("Combined")
     gray_format = workbook.add_format({'bg_color': '#DDDDDD'})
-
     col_offset = 0
 
     for chart_def in chart_defs:
@@ -178,40 +201,39 @@ def create_excel_combined_charts(df, time_col, chart_defs, color_map, secondary_
                     worksheet.write(row_idx + 1, col_offset + idx + 1, val)
 
         # ==== 3. Chart ====
-        chart = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
+        if y_cols or secondary_cols:  # ← この条件を追加
+            chart = workbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
 
-        for idx, col in enumerate(y_cols):
-            chart.add_series({
-                'name':       ['Combined', 0, col_offset + idx + 1],
-                'categories': ['Combined', 1, col_offset, len(df), col_offset],
-                'values':     ['Combined', 1, col_offset + idx + 1, len(df), col_offset + idx + 1],
-                'line':       {'color': color_map.get(col, '#000000')},
-                'y2_axis': False  # 第一軸
-            })
-        # ==== 第二縦軸用プロット (marker only, color synced) ====
-        for idx, col in enumerate(secondary_cols):
-            chart.add_series({
-                'name':       ['Combined', 0, col_offset + len(y_cols) + idx + 1],
-                'categories': ['Combined', 1, col_offset, len(df), col_offset],
-                'values':     ['Combined', 1, col_offset + len(y_cols) + idx + 1, len(df), col_offset + len(y_cols) + idx + 1],
-                'marker': {
-                'type': 'circle',
-                'size': 5,
-                'border': {'none': True},  # マーカー枠線なしにする（任意）
-                'fill': {'color': color_map.get(col, '#000000')}  # ✅ ここでマーカーの塗り色をPlotly同期            
-                },
-                'line': {'none': True},                 
-                'y2_axis':    True
-            })
+            for idx, col in enumerate(y_cols):
+                chart.add_series({
+                    'name':       ['Combined', 0, col_offset + idx + 1],
+                    'categories': ['Combined', 1, col_offset, len(df), col_offset],
+                    'values':     ['Combined', 1, col_offset + idx + 1, len(df), col_offset + idx + 1],
+                    'line':       {'color': color_map.get(col, '#000000')},
+                    'y2_axis': False  # 第一軸
+                })
+            # ==== 第二縦軸用プロット (marker only, color synced) ====
+            for idx, col in enumerate(secondary_cols):
+                chart.add_series({
+                    'name':       ['Combined', 0, col_offset + len(y_cols) + idx + 1],
+                    'categories': ['Combined', 1, col_offset, len(df), col_offset],
+                    'values':     ['Combined', 1, col_offset + len(y_cols) + idx + 1, len(df), col_offset + len(y_cols) + idx + 1],
+                    'marker': {
+                    'type': 'circle',
+                    'size': 5,
+                    'border': {'none': True},  # マーカー枠線なしにする（任意）
+                    'fill': {'color': color_map.get(col, '#000000')}  # ✅ ここでマーカーの塗り色をPlotly同期            
+                    },
+                    'line': {'none': True},                 
+                    'y2_axis':    True
+                })
 
-
-        chart.set_title({'name': chart_title})
-        chart.set_x_axis({'name': time_col})
-        chart.set_y_axis({'name': y_title})
-        chart.set_legend({'position': 'bottom'})
-        chart.set_y2_axis({'name': 'Secondary Axis'})
-
-        worksheet.insert_chart(9, col_offset, chart, {"x_scale": 1.6, "y_scale": 1.5})
+            chart.set_title({'name': chart_title})
+            chart.set_x_axis({'name': time_col})
+            chart.set_y_axis({'name': y_title})
+            chart.set_legend({'position': 'bottom'})
+            chart.set_y2_axis({'name': st.session_state.get("y2_title", "Secondary Axis")})
+            worksheet.insert_chart(9, col_offset, chart, {"x_scale": 1.6, "y_scale": 1.5})
 
         for row in range(len(df) + 10):
             worksheet.write(row, col_offset + len(y_cols) + len(secondary_cols) + 1, '', gray_format)
@@ -304,12 +326,18 @@ def reset_selected_y_cols():
 def reset_secondary_y_cols():
     st.session_state.secondary_y_cols = []
 
+# ✅ 必ずファイル変更時のみ初期化、その他のときは session_state を保持
 if file != previous_file:
     reset_selected_y_cols()
     reset_secondary_y_cols()
     st.session_state.last_selected_file = file
-elif "selected_y_cols" not in st.session_state:
-    reset_selected_y_cols()
+
+# ✅ 明示的に初回だけ定義（上書きされない）
+if "selected_y_cols" not in st.session_state:
+    st.session_state.selected_y_cols = get_default_power_cols()
+if "secondary_y_cols" not in st.session_state:
+    st.session_state.secondary_y_cols = []
+
 # ===== 第一縦軸列選択（ExpanderでまとめてUI整理） =====
 df_unique_columns = pd.Index(dict.fromkeys(df.columns))
 with st.sidebar.expander("2️⃣ Setting for 1st Y-axis column", expanded=True):
@@ -353,12 +381,23 @@ with st.sidebar.expander("2️⃣ Setting for 1st Y-axis column", expanded=True)
 with st.sidebar.expander("3️⃣ Chart setting", expanded=True):
     colormap_list = sorted(plt.colormaps())
     default_cmap = "gist_ncar"
-    st.session_state["colormap_name"] = st.selectbox(
+
+    if "colormap_select" not in st.session_state:
+        st.session_state["colormap_select"] = st.session_state.get("colormap_name", default_cmap)
+
+    selected_cmap = st.selectbox(
         "Choose colormap",
         colormap_list,
-        index=colormap_list.index(default_cmap) if default_cmap in colormap_list else 0,
+        index=colormap_list.index(st.session_state["colormap_select"]),
         key="colormap_select"
     )
+    # 常に選択中の値で更新（UIのイベントと同期）
+    st.session_state["colormap_name"] = st.session_state["colormap_select"]
+
+    # 選択が変わったときだけ更新
+    if st.session_state.get("colormap_name", default_cmap) != selected_cmap:
+        st.session_state["colormap_name"] = selected_cmap
+
     width = st.slider("Chart width\n(For saving chart)", 8, 24, 14, key="plot_width")
     height = st.slider("Chart height\n(For saving chart)", 4, 16, 7, key="plot_height")
     ytick_step = st.number_input("Y-axis ticks duration", min_value=1, value=5, key="ytick_step")
@@ -389,6 +428,7 @@ with st.sidebar.expander("3️⃣ Chart setting", expanded=True):
         legend_alpha = st.slider("Legend opacity (0=transparent, 1=opaque)\n(For saving chart)", 0.0, 1.0, 0.5, step=0.05, key="legend_alpha")
 
 # ===== 第二縦軸設定（expander内にトグルも含めて表示） =====
+update_y2_max_if_needed(df, st.session_state.secondary_y_cols)
 with st.sidebar.expander("4️⃣ 2nd Y-axis setting", expanded=True):
     use_secondary_axis = st.toggle("Utilize 2nd Y-axis", value=False, key="use_secondary_axis")
 
@@ -397,7 +437,10 @@ with st.sidebar.expander("4️⃣ 2nd Y-axis setting", expanded=True):
         secondary_tick_step = st.number_input("2nd Y-axis ticks duration", min_value=1, value=5, key="secondary_tick_step")
 
         y2_max_data = int(df.select_dtypes(include='number').max().max() * 1.1)
-        y2_max = st.number_input("2nd Y-axis upper limit\n(For saving chart)", min_value=1, value=y2_max_data if y2_max_data < 10000 else 100, key="y2_max")
+        y2_max = st.number_input("2nd Y-axis upper limit\n(For saving chart)",
+                         min_value=1,
+                         value=st.session_state.get("y2_max", 100),
+                         key="y2_max")
 
         st.markdown("**Search and attend 2nd Y-axis column**")
         y2_search = st.text_input("Searching（2nd Y-axis）", value="Temp", key="y2_search")
@@ -409,8 +452,7 @@ with st.sidebar.expander("4️⃣ 2nd Y-axis setting", expanded=True):
         y2_add = st.selectbox(
             "Attend column（2nd Y-axis)",
             options=[""] + [col for col in y2_candidates if col not in st.session_state.secondary_y_cols],
-            index=0
-        )
+            index=0)
 
         # 候補追加があった場合にだけ append＋rerun し、直後に return しない
         if y2_add and y2_add not in st.session_state.secondary_y_cols:
@@ -440,10 +482,25 @@ temp_cols = [
 ]
 # ===== Plotlyグラフ描画 =====
 selected_y_cols = list(dict.fromkeys(st.session_state.selected_y_cols))  # 重複除去
-secondary_y_cols = list(dict.fromkeys(st.session_state.get("secondary_y_cols", []))) if use_secondary_axis else []
+secondary_y_cols = (
+    list(dict.fromkeys(st.session_state.secondary_y_cols))
+    if st.session_state.get("use_secondary_axis", False)
+    else []
+)
 if "style_map" not in st.session_state:
     st.session_state["style_map"] = {}
 
+# ▼ 自動更新: y2_max を更新（ただし default=100 は超えないようにする）
+if st.session_state.get("use_secondary_axis", False) and secondary_y_cols:
+    # 現在の session_state に y2_max が存在しない場合のみ自動セット（手動上書き防止）
+    if "y2_max" not in st.session_state or st.session_state.y2_max == 100:
+        try:
+            y2_max_candidate = int(df[secondary_y_cols].max().max() * 1.1)
+            if y2_max_candidate > 0:
+                st.session_state.y2_max = min(y2_max_candidate, 100)  # ← 100超えない制限
+        except Exception:
+            pass
+        
 # ✅ 列名ベースで色を固定するカラーマップを作成
 colormap_name = st.session_state["colormap_name"]
 colormap = cm.get_cmap(colormap_name)
@@ -457,24 +514,6 @@ for idx, col in enumerate(plot_cols):
     color = get_color_hex(colormap, idx, len(plot_cols))
     color_map_ui[col] = color
     color_map_excel[col] = color
-
-# # === Frequency列: ランダム色を割り当て（同じシードで両方） ===
-# random.seed(42)
-# rand_positions_freq = random.sample(range(100), len(frequency_cols))
-# for i, col in enumerate(frequency_cols):
-#     if col not in color_map_ui:
-#         color = get_color_hex(colormap, rand_positions_freq[i] / 100.0)
-#         color_map_ui[col] = color
-#         color_map_excel[col] = color
-
-# # === CPU温度列も同様にランダムで割り当て（希望があれば） ===
-# random.seed(42)
-# rand_positions_temp = random.sample(range(100), len(temp_cols))
-# for i, col in enumerate(temp_cols):
-#     if col not in color_map_ui:
-#         color = get_color_hex(colormap, rand_positions_temp[i] / 100.0)
-#         color_map_ui[col] = color
-#         color_map_excel[col] = color
 
 def assign_evenly_spaced_colors(cols, cmap):
     total = len(cols)
@@ -561,7 +600,6 @@ for col in secondary_y_cols:
         marker=dict(color=color_map_ui[col], symbol="circle"),
         line=dict(color=color_map_ui[col]),
         yaxis="y2",
-        legendgroup="group2",
         showlegend=True
     ))
 
@@ -641,7 +679,7 @@ layout_dict = dict(
                         "updatemenus[0].xanchor": "right",
                         "updatemenus[0].y": 1.08,
                         "updatemenus[0].yanchor": "top"
-                    }]
+                    }],
                 ),
                 dict(
                     label="Legend off",
