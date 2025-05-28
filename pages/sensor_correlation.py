@@ -1,5 +1,6 @@
 import sys
 import os
+import plotly.express as px
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import streamlit as st
 import pandas as pd
@@ -8,7 +9,16 @@ import tempfile
 import plotly.io as pio
 import xlsxwriter
 import pandas as pd
+from openpyxl.chart.marker import DataPoint
+from openpyxl.chart.shapes import GraphicalProperties
 from openpyxl import load_workbook
+from openpyxl.chart import ScatterChart, Reference, Series
+from openpyxl.styles.colors import Color
+from openpyxl.chart.series import SeriesLabel
+from openpyxl.utils import get_column_letter
+from openpyxl.drawing.line import LineProperties
+from openpyxl.chart.shapes import GraphicalProperties
+from openpyxl.chart.marker import Marker
 from sensor_correlation_modules.pipeline_module_to_4 import full_logger_ptat_pipeline as pipeline_4
 from sensor_correlation_modules.pipeline_module_to_5 import full_logger_ptat_pipeline as pipeline_5
 
@@ -58,6 +68,19 @@ button[data-testid="stDownloadButton-template-download"]:hover {
 }
 </style>
 """, unsafe_allow_html=True)
+# 横幅3分割で中央カラムにボタン配置
+left, center, right = st.columns([2, 3, 2])
+with center:
+    st.markdown("""
+        <style>
+        div.stDownloadButton > button {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1.2rem;
+            background-color: crimson;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
 col1, non_col, col2, = st.columns([3,1,2])
 with col1:
@@ -113,6 +136,7 @@ segment_labels = ["1st segment", "2nd segment", "3rd segment", "4th segment", "5
 default_values = ["pTAT+Fur", "pTAT", "Fur", "Prime95", "None"]
 select_options = ["None", "pTAT+Fur", "pTAT", "Fur", "Prime95", "pTAT+Fur+Charging"]
 
+
 # split_modeに応じて、デフォルト値を再初期化
 if not st.session_state.segment_defaults_set:
     reset_segment_defaults()
@@ -129,6 +153,83 @@ for i in range(5):
         )
         selected_segments.append(selected)
 
+def add_sensor_correlation_chart_with_markers_only(xlsx_path, col_x, col_y, legend_names, color_map):
+    wb = load_workbook(xlsx_path)
+    ws = wb["Sensor Correlation"]
+
+    chart = ScatterChart()
+    chart.title = "Sensor Correlation Scatter"
+    chart.x_axis.title = col_x
+    chart.y_axis.title = col_y
+    chart.legend.position = 'r'
+
+    max_row = ws.max_row
+    max_col = ws.max_column
+
+    for i in range(1, max_col, 2):
+        if i + 1 > max_col:
+            break
+
+        xvalues = Reference(ws, min_col=i, min_row=2, max_row=max_row)
+        yvalues = Reference(ws, min_col=i + 1, min_row=2, max_row=max_row)
+        series = Series(yvalues, xvalues, title=legend_names[i // 2])
+        
+        # マーカー形式でプロット（線なし、色付きマーカー）
+        series.marker.symbol = "circle"
+        hex_color = color_map.get(legend_names[i // 2], "#000000").replace("#", "")  # default: black
+        series.graphicalProperties = GraphicalProperties(solidFill=hex_color)
+        chart.series.append(series)
+
+    ws.add_chart(chart, "A8")
+    wb.save(xlsx_path)
+    return xlsx_path
+
+def add_sensor_correlation_chart_with_colors(excel_path: str, col_x: str, col_y: str, legend_names: list[str], color_map: dict):
+    from openpyxl.utils import get_column_letter
+    wb = load_workbook(excel_path)
+    ws = wb["Sensor Correlation"]
+
+    chart = ScatterChart()
+    chart.title = "Sensor Correlation Scatter"
+    chart.x_axis.title = col_x
+    chart.y_axis.title = col_y
+    chart.legend.position = "r"
+    chart.style = 18
+
+    max_row = ws.max_row
+    max_col = ws.max_column
+
+    for i in range(1, max_col, 2):
+        if i + 1 > max_col:
+            break
+
+        x_values = Reference(ws, min_col=i, min_row=2, max_row=max_row)
+        y_values = Reference(ws, min_col=i+1, min_row=2, max_row=max_row)
+
+        series = Series(y_values, x_values)
+        seg_index = i // 2
+        if seg_index < len(legend_names):
+            name = legend_names[seg_index]
+            series.title = SeriesLabel(v=name)
+
+            # ✅ Excelプロットの色を設定（hexコードからカラーに変換）
+            hex_color = color_map.get(name, "#000000").replace("#", "")
+            hex_color = color_map.get(name, "#000000").replace("#", "")
+
+            # 🔴 マーカーだけにする：線なし、色付きマーカー設定
+            series.graphicalProperties = GraphicalProperties()
+            series.graphicalProperties.line.noFill = True  # 線を消す
+            series.marker = Marker(symbol="circle")
+            gp = GraphicalProperties()
+            gp.solidFill = hex_color
+            gp.line = LineProperties(noFill=True)  # 枠線を消す
+
+            series.marker = Marker(symbol="circle")
+            series.marker.graphicalProperties = gp
+        chart.series.append(series)
+
+    ws.add_chart(chart, "A8")
+    wb.save(excel_path)
 
 def add_sensor_correlation_sheet(excel_path: str, df_corr: pd.DataFrame, col_x: str, col_y: str):
     df_corr = df_corr.dropna(subset=[col_x, col_y])
@@ -149,6 +250,47 @@ def add_sensor_correlation_sheet(excel_path: str, df_corr: pd.DataFrame, col_x: 
 
         with pd.ExcelWriter(excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
             combined_df.to_excel(writer, sheet_name="Sensor Correlation", index=False)
+        wb = load_workbook(excel_path)
+        if "Sensor Correlation" in wb.sheetnames:
+            for sheet in wb.worksheets:
+                sheet.sheet_view.tabSelected = False  # 全て非選択に
+            wb["Sensor Correlation"].sheet_view.tabSelected = True  # 対象を選択状態に
+            wb.active = wb.sheetnames.index("Sensor Correlation")   # アクティブにする
+            wb.save(excel_path)
+
+def add_sensor_correlation_chart(excel_path: str, col_x: str, col_y: str, legend_names: list[str]):
+    wb = load_workbook(excel_path)
+    ws = wb["Sensor Correlation"]
+
+    chart = ScatterChart()
+    chart.title = "Sensor Correlation Scatter"
+    chart.style = 13
+    chart.x_axis.title = col_x
+    chart.y_axis.title = col_y
+    chart.legend.position = "r"
+    chart.graphicalProperties = GraphicalProperties(ln=None)
+
+    max_row = ws.max_row
+    max_col = ws.max_column
+
+    for i in range(1, max_col, 2):
+        if i + 1 > max_col:
+            break
+
+        x_values = Reference(ws, min_col=i, min_row=2, max_row=max_row)
+        y_values = Reference(ws, min_col=i+1, min_row=2, max_row=max_row)
+
+        series = Series(y_values, x_values)
+        seg_index = i // 2
+        if seg_index < len(legend_names):
+            series.title = SeriesLabel(v=legend_names[seg_index])
+        series.smooth = False
+        chart.series.append(series)
+
+    ws.add_chart(chart, "A8")
+
+    wb.save(excel_path)
+
 
 output_name = ("Merged")
 
@@ -203,7 +345,6 @@ if logger_file and ptat_file:
 
 
 if "excel_bytes" in st.session_state:
-    st.header("📈 Visualization from Analysis Result")
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_excel:
         tmp_excel.write(st.session_state["excel_bytes"])
@@ -262,47 +403,59 @@ if "excel_bytes" in st.session_state:
                         df_filtered = df[df["Experiment"].isin(selected_exps)]
                     else:
                         df_filtered = df.copy()
-
-                # 横幅3分割で中央カラムにボタン配置
-                left, center, right = st.columns([2, 3, 2])
-                with center:
-                    st.markdown("""
-                        <style>
-                        div.stDownloadButton > button {
-                            width: 100%;
-                            padding: 1rem;
-                            font-size: 1.2rem;
-                            background-color: crimson;
-                        }
-                        </style>
-                    """, unsafe_allow_html=True)
-                    
-
-                color_map = {
-                    "TAT+Fur": "blue",
-                    "TAT": "green",
-                    "Fur": "orange",
-                    "Prime95": "red",
-                    "Charging": "#ee82ee"
-                }
+                # 色をPlotlyの順番で固定
+                plotly_colors = px.colors.qualitative.Plotly
+                color_map = {seg: plotly_colors[i % len(plotly_colors)] for i, seg in enumerate(effective_segments)}
+                effective_segments = selected_segments[:num_segments]
+    
+                # color_map = {
+                #     1st: "#1f77b4",
+                #     2nd: "#2ca02c",
+                #     3rd: "#ff7f0e",
+                #     4th: "#d62728",
+                #     5th: "#9467bd"
+                # }
 
                 num_segments = 4 if split_mode == "4 segments" else 5
+                fixed_colors = ["#1f77b4", "#2ca02c", "#ff7f0e", "#d62728", "#9467bd"]
+                num_segments = 4 if split_mode == "4 segments" else 5
                 effective_segments = selected_segments[:num_segments]
+                color_map = {label: fixed_colors[i] for i, label in enumerate(effective_segments)}
                 fig = go.Figure()
+                
+                fig.add_vline(
+                    x=bal_val,
+                    line=dict(color="green", dash="dot", width=3),
+                    annotation_text="Bal spec",
+                    annotation_position="top left",
+                    layer="above",
+                    opacity=0.7
+                )
+
+                fig.add_vline(
+                    x=bestp_val,
+                    line=dict(color="red", dash="dot", width=3),
+                    annotation_text="BestP spec",
+                    annotation_position="top right",
+                    layer="above",
+                    opacity=0.7
+                )
 
                 if "Experiment" in df.columns:
                     unique_exps = df_filtered["Experiment"].dropna().unique().tolist()
-
+                    px_colors = px.colors.qualitative.Plotly
+                    
                     for i, exp in enumerate(unique_exps):
                         if i >= len(effective_segments):
-                            break  # セグメント数を超えたら無視
+                            break
+                        seg_label = effective_segments[i]
                         exp_df = df_filtered[df_filtered["Experiment"] == exp]
                         fig.add_trace(go.Scatter(
                             x=exp_df[col_x],
                             y=exp_df[col_y],
                             mode="markers",
-                            name=effective_segments[i],  # 凡例を選択に同期
-                            marker=dict(color=color_map.get(exp, "gray")),
+                            name=seg_label,
+                            marker=dict(color=color_map[seg_label]),
                             opacity=point_opacity
                         ))
 
@@ -340,43 +493,55 @@ if "excel_bytes" in st.session_state:
                 )
                 fig.update_xaxes(showgrid=show_grid)
                 fig.update_yaxes(showgrid=show_grid)
-                st.plotly_chart(fig, use_container_width=True)
 
-                # 기존 Merged.xlsx에 Sensor Correlation 시트 추가
-                add_sensor_correlation_sheet(
-                    excel_path=tmp_excel_path,
-                    df_corr=df_filtered,
-                    col_x=col_x,
-                    col_y=col_y
-                )
-
-                # 다운로드 버튼 (시트 포함 버전)
-                with open(tmp_excel_path, "rb") as f_corr:
-                    st.download_button(
-                        label="📥 Download with Sensor Correlation Sheet",
-                        data=f_corr.read(),
-                        file_name="Merged_with_Correlation.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="centered-download"
+                with st.spinner("Processing Sensor Correlation Chart and Output..."):
+                    # Sensor Correlation シートを追加
+                    add_sensor_correlation_sheet(
+                        excel_path=tmp_excel_path,
+                        df_corr=df_filtered,
+                        col_x=col_x,
+                        col_y=col_y
                     )
 
-                # try:
-                #     png_bytes = pio.to_image(fig, format="png")
-                #     st.download_button("📥 Download Chart as PNG", data=png_bytes, file_name="chart.png", mime="image/png")
-                # except Exception:
-                #     st.warning("⚠️ Install 'kaleido' for PNG export.")
+                    # Sensor Correlation グラフをA8に追加
+                    add_sensor_correlation_chart(
+                        excel_path=tmp_excel_path,
+                        col_x=col_x,
+                        col_y=col_y,
+                        legend_names=effective_segments
+                    )
 
-                with st.expander("📋 View Raw Data", expanded=True):
-                    cols_to_show = [col_x, col_y]
-                    if "Experiment" in df.columns:
-                        cols_to_show.append("Experiment")
-                    st.dataframe(df[cols_to_show])
-            else:
-                st.warning("At least two numeric columns are required.")
-        # 時間と電力のグラフ
-                # Sensor Correlation 내장 차트를 포함한 엑셀 파일 생성
-            
+                    add_sensor_correlation_chart_with_colors(
+                        excel_path=tmp_excel_path,
+                        col_x=col_x,
+                        col_y=col_y,
+                        legend_names=effective_segments,  # 例: ["pTAT+Fur", "pTAT", ...]
+                        color_map=color_map               # Plotlyで使ったのと同じ辞書
+                    )
 
+                    # 💾 ボタン（グラフの直前に配置）
+                    with open(tmp_excel_path, "rb") as f_corr:
+                        st.download_button(
+                            label="📥 Output XLSX Sensor Correlation Sheet",
+                            data=f_corr.read(),
+                            file_name="Merged_with_Correlation.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="centered-download"
+                        )
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    # try:
+                    #     png_bytes = pio.to_image(fig, format="png")
+                    #     st.download_button("📥 Download Chart as PNG", data=png_bytes, file_name="chart.png", mime="image/png")
+                    # except Exception:
+                    #     st.warning("⚠️ Install 'kaleido' for PNG export.")
+
+                    with st.expander("📋 View Raw Data", expanded=True):
+                        cols_to_show = [col_x, col_y]
+                        if "Experiment" in df.columns:
+                            cols_to_show.append("Experiment")
+                        st.dataframe(df[cols_to_show])
+           
 
         with tabs[1]:
             power_cols = [col for col in df.columns if any(key in col for key in ["IA", "GT", "Package"])]
