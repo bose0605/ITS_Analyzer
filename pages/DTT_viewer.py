@@ -17,6 +17,7 @@ import re
 import textwrap
 from io import StringIO
 import base64
+import chardet
 st.set_page_config(layout="wide")
 
 top_col_right = st.columns([8, 1])
@@ -79,7 +80,12 @@ def sanitize_key(text: str) -> str:
 def get_color_hex(cmap, index, total):
     rgba = cmap(index / max(total - 1, 1))
     return mcolors.to_hex(rgba, keep_alpha=False)
-
+def assign_evenly_spaced_colors(cols, cmap):
+    total = len(cols)
+    return {
+        col: get_color_hex(cmap, i, total)
+        for i, col in enumerate(cols)
+    }
 
 plt.rcParams["font.family"] = "Times New Roman"
 if "colormap_name" not in st.session_state:
@@ -135,13 +141,27 @@ with st.sidebar.expander("1️⃣ Choose your csv file", expanded=True):
 
 @st.cache_data
 def load_csv(file_obj):
+    # UTF-8（最速）
     try:
-        # 最初にUTF-8で読み込む（成功すれば速い）
-        return pd.read_csv(file_obj)
+        return pd.read_csv(file_obj, on_bad_lines='skip')
     except UnicodeDecodeError:
-        # 失敗したらShift-JISで再読み込み（リセット必要）
-        file_obj.seek(0)
-        return pd.read_csv(file_obj, encoding="shift_jis")
+        pass
+
+    # Shift_JIS（日本語Windows対策）
+    file_obj.seek(0)
+    try:
+        return pd.read_csv(file_obj, encoding="shift_jis", on_bad_lines='skip')
+    except UnicodeDecodeError:
+        pass
+
+    # 最後の手段として chardet
+    file_obj.seek(0)
+    raw = file_obj.read(100_000)  # ✅ 全体ではなく先頭10万バイトだけに制限（高速化）
+    result = chardet.detect(raw)
+    encoding = result["encoding"]
+
+    file_obj.seek(0)
+    return pd.read_csv(file_obj, encoding=encoding, on_bad_lines='skip')
 
 # ===== mW列の変換処理 =====
 df = load_csv(uploaded_file)
@@ -158,7 +178,7 @@ if not time_col_candidates:
 time_col = time_col_candidates[0]
 
 try:
-    df[time_col] = pd.to_datetime(df[time_col])
+    df["Time_str"] = pd.to_datetime(df[time_col]).dt.strftime("%H:%M:%S")
     time_vals = df[time_col].dt.strftime("%H:%M:%S")
 except:
     time_vals = df[time_col]
@@ -225,12 +245,22 @@ with st.sidebar.expander("2️⃣ Setting for 1st Y-axis column", expanded=True)
 with st.sidebar.expander("3️⃣ Chart setting", expanded=True):
     colormap_list = sorted(plt.colormaps())
     default_cmap = "Accent"
-    st.session_state["colormap_name"] = st.selectbox(
+    
+    # 初回だけ session_state をセット
+    if "colormap_name" not in st.session_state:
+        st.session_state["colormap_name"] = default_cmap
+
+    # selectbox の選択結果を colormap_name に反映（ここで上書きしない！）
+    selected_cmap = st.selectbox(
         "Choose colormap",
         colormap_list,
-        index=colormap_list.index(default_cmap) if default_cmap in colormap_list else 0,
+        index=colormap_list.index(st.session_state["colormap_name"]) if st.session_state["colormap_name"] in colormap_list else 0,
         key="colormap_select"
     )
+    # session_state を更新（selectbox の選択が変わったときのみ）
+    if selected_cmap != st.session_state["colormap_name"]:
+        st.session_state["colormap_name"] = selected_cmap
+
     width = st.slider("Chart width\n(For saving chart)", 8, 24, 14, key="plot_width")
     height = st.slider("Chart height\n(For saving chart)", 4, 16, 7, key="plot_height")
     ytick_step = st.number_input("Y-axis ticks duration", min_value=1, value=5, key="ytick_step")
@@ -298,11 +328,35 @@ with st.sidebar.expander("4️⃣ 2nd Y-axis setting", expanded=True):
             key="y2_remove"
         )
         st.session_state.secondary_y_cols = y2_remove_cols
+# Powerlimit用の列（tabs[1]でも使っている同じ列セット）
+power_cols = [
+    "TCPU_D0_Current Power(W)", "TCPU_D1_Current Power(W)", "TCPU_D2_Current Power(W)",
+    "TCPU_PL1 Limit(W)", "TCPU_PL1 Min Power Limit(W)", "TCPU_PL1 Max Power Limit(W)",
+    "TCPU_PL2 Limit(W)"
+]
+
+power_cols = [col for col in power_cols if col in df.columns]  # 実在列だけ抽出
+# colormap_name = st.session_state["colormap_name"]
+# colormap = cm.get_cmap(colormap_name)
+# plot_cols = list(dict.fromkeys(col for col in all_plot_cols if col in df.columns))
 
 
+# ✅ 列名ベースで色を固定するカラーマップを作成
 selected_y_cols = st.session_state.selected_y_cols
 selected_y_cols = list(dict.fromkeys(st.session_state.selected_y_cols))  # 重複除去
 secondary_y_cols = st.session_state.get("secondary_y_cols", []) if use_secondary_axis else []
+colormap_name = st.session_state["colormap_name"]
+colormap = cm.get_cmap(colormap_name)
+all_plot_cols = selected_y_cols + secondary_y_cols
+color_map = assign_evenly_spaced_colors(all_plot_cols, colormap)
+color_map_ui = {}
+color_map_excel = {}
+
+# === 固定順で assigned（selected_y_cols + secondary_y_cols） ===
+for idx, col in enumerate(all_plot_cols):
+    color = get_color_hex(colormap, idx, len(all_plot_cols))
+    color_map_ui[col] = color
+    color_map_excel[col] = color
 
 # ===== Plotlyグラフ描画 =====
 if "style_map" not in st.session_state:
@@ -311,13 +365,7 @@ if "style_map" not in st.session_state:
 colormap_name = st.session_state["colormap_name"]
 colormap = cm.get_cmap(colormap_name)
 all_plot_cols = selected_y_cols + secondary_y_cols
-color_map_ui = {}
-color_map_excel = {}
-plot_cols = selected_y_cols + secondary_y_cols
-for idx, col in enumerate(plot_cols):
-    color = get_color_hex(colormap, idx, len(plot_cols))
-    color_map_ui[col] = color
-    color_map_excel[col] = color
+
 for col in selected_y_cols + secondary_y_cols:
     st.session_state["style_map"].setdefault(col, "直線")
 
@@ -338,7 +386,7 @@ if "show_avg_lines" not in st.session_state:
     st.session_state.show_avg_lines = False
 
 #===== グラフ化のための変換コード
-def export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols, power_cols, epp_col=None, os_power_col=None):
+def export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols, power_cols, epp_col=None, os_power_col=None, secondary_y_cols=None, color_map_ui=None):
     output = BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
     worksheet = workbook.add_worksheet("Data")
@@ -347,18 +395,22 @@ def export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols, power_cols, epp_
     header_format = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2'})
     gray_fill = workbook.add_format({'bg_color': '#D9D9D9'})
 
-    # --- MainPlotのデータ書き込み ---
+    # --- MainPlotのデータ書き込み（Time列 + 1st Y-axis + 2nd Y-axis） ---
     worksheet.write(0, 0, "Time", header_format)
-    for idx, col in enumerate(selected_y_cols):
+
+    # すべてのY軸列をまとめてヘッダー書き出し
+    all_main_cols = selected_y_cols + secondary_y_cols
+    for idx, col in enumerate(all_main_cols):
         worksheet.write(0, idx + 1, col, header_format)
 
-    for row_idx, (time_val, *values) in enumerate(df[[time_col] + selected_y_cols].itertuples(index=False), start=1):
-        worksheet.write(row_idx, 0, str(time_val))
-        for col_idx, value in enumerate(values):
-            worksheet.write(row_idx, col_idx + 1, value)
+    # データ本体の書き出し
+    for row_idx, row in enumerate(df[["Time_str"] + all_main_cols].itertuples(index=False), start=1):
+        worksheet.write(row_idx, 0, str(row[0]))  # Time列
+        for col_idx, val in enumerate(row[1:]):
+            worksheet.write(row_idx, col_idx + 1, val)
 
     # --- グレー塗りつぶし2列 ---
-    start_col = len(selected_y_cols) + 1
+    start_col = len(selected_y_cols) + len(secondary_y_cols) + 1
     worksheet.set_column(start_col, start_col+1, 4, gray_fill)
 
     # --- CPUtempデータ書き込み ---
@@ -371,27 +423,50 @@ def export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols, power_cols, epp_
             worksheet.write(row_idx, temp_start_col + col_idx, value)
 
     # --- MainPlotグラフ書き込み ---
+    all_main_cols = selected_y_cols + secondary_y_cols
     chart = workbook.add_chart({'type': 'line'})
-    for idx, col in enumerate(selected_y_cols):
-        chart.add_series({
+    for idx, col in enumerate(all_main_cols):
+        series = {
             'name': ['Data', 0, idx + 1],
             'categories': ['Data', 1, 0, len(df), 0],
             'values': ['Data', 1, idx + 1, len(df), idx + 1],
-            'line': {'color': get_color_hex(cm.get_cmap(colormap_name), idx, len(selected_y_cols))}
-        })
+            'line': {'color': color_map[col]}
+        }
+        if col in secondary_y_cols:
+            series['y2_axis'] = True  # 👈 これが効く
+        chart.add_series(series)
+
     chart.set_title({'name': 'Main Plot'})
     chart.set_x_axis({'name': 'Time'})
-    chart.set_y_axis({'name': 'Value'})
+    chart.set_y_axis({'name': y_axis_title})
+    chart.set_y2_axis({'name': st.session_state.get("y2_title", "2nd Axis")})  # ✅ 追加
     worksheet.insert_chart(9, col_offset, chart, {"x_scale": 1.6, "y_scale": 1.9})
+
+    # --- Mainplot 2nd Y-axis グラフ描画 ---
+    secondary_start_col = 1 + len(selected_y_cols)
+    chart_y2 = workbook.add_chart({'type': 'line'})
+    for idx, col in enumerate(secondary_y_cols):
+        chart_y2.add_series({
+            'name': ['Data', 0, secondary_start_col + idx],
+            'categories': ['Data', 1, 0, len(df), 0],
+            'values': ['Data', 1, secondary_start_col + idx, len(df), secondary_start_col + idx],
+            'line': {'color': color_map_ui[col]},
+            'y2_axis': True
+        })
+    chart_y2.set_title({'name': '2nd Y-axis Chart'})
+    chart_y2.set_x_axis({'name': 'Time'})
+    chart_y2.set_y_axis({'name': st.session_state.get("y2_title", "2nd Axis")})
 
     # --- CPUtempグラフ書き込み ---
     chart2 = workbook.add_chart({'type': 'line'})
     for idx, col in enumerate(temp_cols):
+        if col not in color_map:
+            color_map[col] = get_color_hex(cm.get_cmap(colormap_name), len(color_map), len(color_map) + 5)
         chart2.add_series({
             'name': ['Data', 0, temp_start_col + idx],
             'categories': ['Data', 1, 0, len(df), 0],
             'values': ['Data', 1, temp_start_col + idx, len(df), temp_start_col + idx],
-            'line': {'color': get_color_hex(cm.get_cmap(colormap_name), idx, len(temp_cols))}
+            'line': {'color': color_map_ui.get(col, "#000000")}
         })
     chart2.set_title({'name': 'CPU & Sensors Temperature'})
     chart2.set_x_axis({'name': 'Time'})
@@ -401,23 +476,28 @@ def export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols, power_cols, epp_
     # --- グレー塗りつぶし2列 ---
     power_start_col = temp_start_col + len(temp_cols) + 2
     worksheet.set_column(power_start_col - 2, power_start_col - 1, 4, gray_fill)
+    start_col = len(selected_y_cols) + len(secondary_y_cols) + 1
+    worksheet.set_column(start_col, start_col + 1, 4, gray_fill)
 
     # --- Powerlimitデータ書き込み ---
     for idx, col in enumerate(power_cols):
         worksheet.write(0, power_start_col + idx, col, header_format)
 
     for row_idx, row in enumerate(df[[time_col] + power_cols].itertuples(index=False), start=1):
+        worksheet.write(row_idx, 0, str(row[0]))
         for col_idx, val in enumerate(row[1:]):
             worksheet.write(row_idx, power_start_col + col_idx, val)
 
     # --- Powerlimitグラフ描き込み ---
     chart3 = workbook.add_chart({'type': 'line'})
     for idx, col in enumerate(power_cols):
+        if col not in color_map:
+           color_map[col] = get_color_hex(cm.get_cmap(colormap_name), len(color_map), len(color_map) + 5)
         chart3.add_series({
             'name': ['Data', 0, power_start_col + idx],
             'categories': ['Data', 1, 0, len(df), 0],
             'values': ['Data', 1, power_start_col + idx, len(df), power_start_col + idx],
-            'line': {'color': get_color_hex(cm.get_cmap(colormap_name), idx, len(power_cols))}
+            'line': {'color': color_map_ui.get(col, "#000000")}
         })
     chart3.set_title({'name': 'Power Limit Chart'})
     chart3.set_x_axis({'name': 'Time'})
@@ -477,7 +557,7 @@ for i, col in enumerate(selected_y_cols):
         y=df[col],
         name=col,
         line=dict(
-            color=get_color_hex(colormap, i, total_lines),  # ← ここが統一の肝
+            color=color_map[col],   # ← ここが統一の肝
             dash=style.get("dash")
         ),
         mode="lines+markers" if style.get("marker") else "lines",
@@ -487,23 +567,21 @@ for i, col in enumerate(selected_y_cols):
     ))
 
 for j, col in enumerate(secondary_y_cols):
-    style = style_options.get(st.session_state["style_map"].get(col, "点のみ"), {})
+    style = style_options.get(st.session_state["style_map"].get(col, "直線"), {})
     fig.add_trace(go.Scatter(
         x=time_vals,
         y=df[col],
         name=col,
-        mode="markers",
-        marker=dict(
-            color=get_color_hex(colormap, len(selected_y_cols) + j, total_lines),
-            size=6,
-            symbol="circle"
+        line=dict(
+            color=color_map[col],
+            dash=style.get("dash", None)
         ),
-        yaxis="y2",
-        legendgroup="group2",
+        mode="markers",
+        marker=dict(symbol=style.get("marker")) if style.get("marker") else None,
+        yaxis="y2",  # 👈 ここで第二軸にプロットされるよう指定
+        legendgroup=f"group2_{col}",
         showlegend=True
     ))
-
-
 
 st.markdown("""
 <style>
@@ -521,18 +599,10 @@ div.stDownloadButton > button:hover {
 }
 </style>
 """, unsafe_allow_html=True)
-# Powerlimit用の列（tabs[1]でも使っている同じ列セット）
-power_cols = [
-    "TCPU_D0_Current Power(W)", "TCPU_D1_Current Power(W)", "TCPU_D2_Current Power(W)",
-    "TCPU_PL1 Limit(W)", "TCPU_PL1 Min Power Limit(W)", "TCPU_PL1 Max Power Limit(W)",
-    "TCPU_PL2 Limit(W)"
-]
 
-power_cols = [col for col in power_cols if col in df.columns]  # 実在列だけ抽出
 epp_col = next((col for col in df.columns if "epp" in col.lower()), None)
 os_power_col = next((col for col in df.columns if "os power slider" in col.lower()), None)
-towrite = export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols, power_cols, epp_col, os_power_col)
-
+towrite = export_xlsx(df, selected_y_cols, time_vals, fig, temp_cols, power_cols, epp_col, os_power_col, secondary_y_cols, color_map_ui)
 
 xlsx_filename = file.replace(".csv", ".xlsx")
 st.download_button(
@@ -678,8 +748,6 @@ with st.expander("🎨 Matplotlib chart", expanded=False):
                 with row_cols[j]:
                     st.session_state["style_map"][col] = st.selectbox(
                         f"{col} style（2nd Y-axis）", list(style_options.keys()), index=2, key=safe_key)
-
-   
     st.write({"1st Y-axis": selected_y_cols, "2nd Y-axis": secondary_y_cols})
 
     try:
@@ -825,6 +893,9 @@ for i, tab in enumerate(tabs):
 # ==== タブ処理 ====
 with tabs[0]:
     st.markdown(f"## {tab_headers['CPU&sensors temp']}")
+    for idx, col in enumerate(temp_cols):
+        if col not in color_map_ui:
+            color_map_ui[col] = get_color_hex(colormap, idx, len(temp_cols))
 
     if temp_cols:
         fig_temp = go.Figure()
@@ -834,7 +905,8 @@ with tabs[0]:
                 x=time_vals,
                 y=df[col],
                 mode='lines',
-                name=col
+                name=col,
+                line=dict(color=color_map_ui[col])
             ))
             if df[col].max() > 130:
                 temp_abnormal = True
@@ -908,6 +980,9 @@ with tabs[0]:
 # === 追加: Powerlimitタブ ===
 with tabs[1]:
     st.markdown(f"## {tab_headers['Powerlimit']}")
+    for idx, col in enumerate(power_cols):
+        if col not in color_map_ui:
+            color_map_ui[col] = get_color_hex(colormap, idx, len(power_cols))
 
     # 描画対象の明示的な列指定
     target_cols = [
@@ -933,7 +1008,8 @@ with tabs[1]:
                 x=time_vals,
                 y=y_data,
                 mode='lines',
-                name=col
+                name=col,
+                line=dict(color=color_map_ui[col])
             ))
             if (y_data < 0).any() or (y_data > 250).any():
                 power_abnormal = True
