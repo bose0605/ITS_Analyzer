@@ -1,12 +1,35 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO, StringIO
+import plotly.graph_objects as go # type: ignore
 import plotly.express as px
+from plotly.subplots import make_subplots
 import xlsxwriter
 import re
 import os
+import plotly.colors  # ファイル先頭付近でimport済みでなければ追加
+import matplotlib.pyplot as plt  
+import matplotlib as mpl
+from streamlit_tags import st_tags  # 必要に応じてインポートを追加
 
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
+
+st.markdown("""
+<style>
+button[data-testid="stDownloadButton-template-download"] {
+    background-color: #039CB2;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    margin-top: 30px;
+}
+button[data-testid="stDownloadButton-template-download"]:hover {
+    background-color: #105d96;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # === THI parser ===
 def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
@@ -213,8 +236,6 @@ def read_generic_csv(file, label: str) -> pd.DataFrame:
     return df
 
 # === UI ===
-# === UI Header & Controls ===
-
 top_col_right = st.columns([8, 1])
 with top_col_right[1]:
     st.page_link("main.py", label="🏠 To Main")
@@ -232,7 +253,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📊 Data Wrangling & Visualization UI")
-st.subheader(":one: Drag & drop log files (multiple or single)")
+st.subheader("Drag & drop log files (multiple or single)")
 
 
 # === 1. File Upload UI ===
@@ -257,13 +278,16 @@ for i, label in enumerate(file_labels):
                     if label == "THI":
                         file_str = f.read().decode('utf-8', errors='ignore')
                         df = convert_thi_txt_to_df(file_str)
+                        df.columns = [col if col.lower() == "time" else f"{col} ({label})" for col in df.columns]
                     elif label == "logger":
                         df, error = extract_logger_columns_with_conversion(f)
                         if error:
                             st.warning(f"Logger parse error: {error}")
                             continue
+                        df.columns = [col if col.lower() == "time" else f"{col} ({label})" for col in df.columns]
                     elif label == "FanCK":
                         df = convert_fanck_file(f)
+                        df.columns = [col if col.lower() == "time" else f"{col} ({label})" for col in df.columns]
                     else:
                         df = read_generic_csv(f, label)
 
@@ -285,7 +309,7 @@ cols = st.columns([1, 1, 1, 2])  # 가운데만 사용
 
 with cols[0]:
     label = "Wistron Tool"
-    st.markdown(f"<h5 style='text-align:center;'>📁 {label}</h5>", unsafe_allow_html=True)
+    st.markdown(f"<h5 style='text-align:left;'>📁 {label}</h5>", unsafe_allow_html=True)
     uploaded_files = st.file_uploader(
         label=" ",
         accept_multiple_files=True,
@@ -299,6 +323,7 @@ with cols[0]:
             try:
                 df, _ = convert_wistron_tool_file(f)
                 if df is not None:
+                    df.columns = [col if col.lower() == "time" else f"{col} ({label})" for col in df.columns]
                     uploaded_data[label].append(df)
                     csv = df.to_csv(index=False).encode('utf-8-sig')
                     st.download_button(
@@ -314,7 +339,7 @@ with cols[0]:
 # 📁 GPU mon
 with cols[1]:
     label = "GPU mon"
-    st.markdown(f"<h5 style='text-align:center;'>📁 {label}</h5>", unsafe_allow_html=True)
+    st.markdown(f"<h5 style='text-align:left;'>📁 {label}</h5>", unsafe_allow_html=True)
     uploaded_files = st.file_uploader(
         label=" ",
         accept_multiple_files=True,
@@ -326,8 +351,8 @@ with cols[1]:
         for idx, f in enumerate(uploaded_files):
             try:
                 df = convert_gpumon_file(f)  # ✅ 정확하게 호출됨
+                df.columns = [col if col.lower() == "time" else f"{col} ({label})" for col in df.columns]
                 uploaded_data[label].append(df)
-
                 csv = df.to_csv(index=False).encode('utf-8-sig')
                 st.download_button(
                     label=f"📥 {label}_{idx+1} download converted file (CSV)",
@@ -339,30 +364,42 @@ with cols[1]:
                 st.warning(f"❗ Error processing {label}: {e}")
                 continue
 
-
+st.markdown("""
+        <style>
+        div.stButton > button {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1.2rem;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+        }
+        div.stButton > button:hover {
+            background-color: #218838;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 # === 2. Run Conversion Condition Check ===
 valid_uploaded_count = sum(1 for label in uploaded_data if uploaded_data[label])
 
+plot_mode = st.radio("Select plotting mode", ["Segment", "Merged"], horizontal=True)
 if "run_conversion" not in st.session_state:
     st.session_state.run_conversion = False
-
-if st.session_state.get("run_conversion", False):
-    st.session_state.run_conversion = False
-
+        # CSSで横長スタイルに
+    
 if st.button("▶️ Run Conversion"):
-    if valid_uploaded_count >= 2:
-        st.session_state.run_conversion = True
-    else:
-        st.warning("⚠️ Please upload at least 2 different log types before running conversion.")
+    if valid_uploaded_count >= 1:
+        with st.spinner("⏳ Converting and Merging logs..."):
+            st.session_state.run_conversion = True
+
 
 # === 3. Conversion Output & Plotly Graph Settings ===
-
 if st.session_state.run_conversion:
-    st.subheader("🔗 Auto Merge Logs (Triggered by ▶️ Run Conversion)")
 
     valid_uploaded = {label: dfs[0] for label, dfs in uploaded_data.items() if dfs}
 
-    if len(valid_uploaded) >= 2:
+    if len(valid_uploaded) >= 1:
         try:
             def extract_time(df):
                 for col in df.columns:
@@ -385,7 +422,11 @@ if st.session_state.run_conversion:
                 dfs.append(df)
                 start_times.append(df["Time"].iloc[0])
 
-            reference_time = min(start_times)
+            if len(start_times) > 1:
+                reference_time = min(start_times)
+            else:
+                reference_time = start_times[0]
+
             st.info(f"⏰ Reference Time: {reference_time.strftime('%H:%M:%S')}")
 
             trimmed_dfs = [df[df["Time"] >= reference_time].copy().reset_index(drop=True) for df in dfs]
@@ -396,13 +437,14 @@ if st.session_state.run_conversion:
 
             merged_df = merged_df.sort_values("Time").reset_index(drop=True)
             merged_df["Time"] = merged_df["Time"].dt.strftime("%H:%M:%S")
+            merged_df.rename(columns={"Time": "Time (Merged)"}, inplace=True)
 
+            # 列の整理
             time_related_cols = [col for col in merged_df.columns if col.lower().startswith("time") and col != "Time"]
             other_cols = [col for col in merged_df.columns if col not in ["Time"] + time_related_cols]
-            merged_df = merged_df[["Time"] + time_related_cols + other_cols]
+            merged_df = merged_df[["Time (Merged)"] + time_related_cols + other_cols]
 
             st.session_state["merged_df"] = merged_df
-            st.success("✅ Merge completed successfully!")
 
             csv_merged = merged_df.to_csv(index=False, encoding="utf-8-sig")
             st.download_button(
@@ -416,105 +458,102 @@ if st.session_state.run_conversion:
             st.error(f"❌ Merge failed during conversion: {e}")
             st.stop()
     else:
-        st.warning("⚠️ Please upload at least two different log types.")
         st.stop()
 
-    st.session_state.run_conversion = False
-
     # === 이후 Plotly 그래프 출력 ===
-st.subheader("📈 Plotly Graph Settings")
+    st.subheader("📈 Chart Settings")
+    with st.spinner("Drawing chart..."):
 
-plot_mode = st.radio("Select plotting mode", ["Segment", "Merged"], horizontal=True)
+        # Select X-axis column
+        if "x_axis" not in st.session_state:
+            st.session_state.x_axis = None
 
-if plot_mode == "Segment":
-    all_columns = sorted(set().union(*[df.columns.tolist() for dfs in uploaded_data.values() for df in dfs]))
-else:
-    merged_df = st.session_state.get("merged_df", None)
-    all_columns = merged_df.columns.tolist()
+        # Mergedを選択してRun Conversionした場合、Time (Merged)をデフォルトに設定
+        available_columns = st.session_state["merged_df"].columns if "merged_df" in st.session_state else []
+        default_x_axis = "Time (Merged)" if "merged_df" in st.session_state else None
 
-if not all_columns:
-    st.warning("❗ No columns available for plotting.")
-    st.stop()
-
-if "x_axis" not in st.session_state or st.session_state.x_axis not in all_columns:
-    time_candidates = [col for col in all_columns if "time" in col.lower()]
-    st.session_state.x_axis = time_candidates[0] if time_candidates else all_columns[0]
-
-if "y_axes" not in st.session_state:
-    st.session_state.y_axes = {}
-if "sorted_y_axes" not in st.session_state:
-    st.session_state.sorted_y_axes = {}
-
-st.markdown("#### Select X-axis column")
-st.session_state.x_axis = st.selectbox(" ", options=all_columns, key="x_axis_global")
-
-y_select_cols = st.columns(len(file_labels))
-for i, label in enumerate(file_labels):
-    if plot_mode == "Segment":
-        available_cols = []
-        if label in uploaded_data:
-            for df in uploaded_data[label]:
-                available_cols += df.columns.tolist()
-    else:
-        available_cols = merged_df.columns.tolist()
-
-    available_cols = sorted(set(available_cols))
-
-    if label not in st.session_state.y_axes:
-        st.session_state.y_axes[label] = []
-    if label not in st.session_state.sorted_y_axes:
-        st.session_state.sorted_y_axes[label] = []
-
-    y_col = y_select_cols[i].selectbox(
-        f"Add Y-axis column ({label})",
-        options=[""] + [col for col in available_cols if col not in st.session_state.sorted_y_axes[label]],
-        key=f"y_axis_add_{label}"
-    )
-    if y_col:
-        if y_col not in st.session_state.sorted_y_axes[label]:
-            st.session_state.sorted_y_axes[label].append(y_col)
-        st.session_state.y_axes[label] = st.session_state.sorted_y_axes[label].copy()
-
-st.markdown("#### Selected Y-axis columns (sortable & removable)")
-y_multi_cols = st.columns(len(file_labels))
-visible_all = []
-for i, label in enumerate(file_labels):
-    sorted_y = st.session_state.sorted_y_axes[label]
-    visible = y_multi_cols[i].multiselect(
-        f"Columns to plot ({label})",
-        options=sorted_y,
-        default=st.session_state.y_axes[label],
-        key=f"visible_{label}"
-    )
-    st.session_state.y_axes[label] = visible
-    visible_all += visible
-
-if st.session_state.x_axis and visible_all:
-    combined_df = pd.DataFrame()
-
-    if plot_mode == "Segment":
-        for label, dfs in uploaded_data.items():
-            for df in dfs:
-                if st.session_state.x_axis in df.columns:
-                    valid_y = [y for y in st.session_state.y_axes[label] if y in df.columns]
-                    if valid_y:
-                        temp_df = df[[st.session_state.x_axis] + valid_y].dropna()
-                        combined_df = pd.concat([combined_df, temp_df], ignore_index=True)
-    elif plot_mode == "Merged" and merged_df is not None:
-        valid_y = [y for y in visible_all if y in merged_df.columns]
-        if st.session_state.x_axis in merged_df.columns and valid_y:
-            combined_df = merged_df[[st.session_state.x_axis] + valid_y].dropna()
-
-    if not combined_df.empty:
-        combined_df = combined_df.loc[:, ~combined_df.columns.duplicated()]
-        fig = px.line(
-            combined_df,
-            x=st.session_state.x_axis,
-            y=[col for col in visible_all if col in combined_df.columns],
-            title=f"{plot_mode} Mode Chart"
+        st.session_state.x_axis = st.selectbox(
+            "Select X-axis column",
+            options=available_columns
         )
-        st.plotly_chart(fig, use_container_width=True)
 
+        # Add Y-axis column (5×2配置)
+        st.markdown("### Add Y-axis column")
+        y_axis_cols_row1 = st.columns(len(file_labels))  # 1行目: 各アップローダー
+        y_axis_cols_row2 = st.columns(5)  # 2行目: Wistron Tool + GPU mon + 空白3つ
+
+        # 選択された列を保持するリスト (セッションステートで管理)
+        if "selected_columns" not in st.session_state:
+            st.session_state.selected_columns = []
+
+        # 1行目: 各アップローダーに対応する selectbox を作成
+        for i, label in enumerate(file_labels):
+            with y_axis_cols_row1[i]:
+                if label in uploaded_data and uploaded_data[label]:  # アップロードされたデータがある場合
+                    available_options = [
+                        col for col in uploaded_data[label][0].columns
+                        if col not in st.session_state.selected_columns
+                    ]  # 既に選択された列を除外
+                    selected_column = st.selectbox(
+                        f"Add Y-axis column ({label})",
+                        options=[""] + available_options,  # 空の選択肢を追加
+                        key=f"y_axis_{label}"
+                    )
+                    if selected_column and selected_column not in st.session_state.selected_columns:
+                        st.session_state.selected_columns.append(selected_column)
+                else:  # アップロードされていない 경우
+                    st.selectbox(
+                        f"Add Y-axis column ({label})",
+                        options=[],
+                        key=f"y_axis_{label}",
+                        disabled=True
+                    )
+
+        # 2行目: Wistron Tool と GPU mon に対応する selectbox を作成
+        wistron_tool_label = "Wistron Tool"
+        gpu_mon_label = "GPU mon"
+
+        with y_axis_cols_row2[0]:  # 2行目の左から1番目
+            if wistron_tool_label in uploaded_data and uploaded_data[wistron_tool_label]:
+                available_options = [
+                    col for col in uploaded_data[wistron_tool_label][0].columns
+                    if col not in st.session_state.selected_columns
+                ]  # 既に選択された列を除外
+                selected_column = st.selectbox(
+                    f"Add Y-axis column ({wistron_tool_label})",
+                    options=[""] + available_options,  # 空の選択肢を追加
+                    key=f"y_axis_{wistron_tool_label}"
+                )
+                if selected_column and selected_column not in st.session_state.selected_columns:
+                    st.session_state.selected_columns.append(selected_column)
+            else:
+                st.selectbox(
+                    f"Add Y-axis column ({wistron_tool_label})",
+                    options=[],
+                    key=f"y_axis_{wistron_tool_label}",
+                    disabled=True
+                )
+
+        with y_axis_cols_row2[1]:  # 2行目の左から2番目
+            if gpu_mon_label in uploaded_data and uploaded_data[gpu_mon_label]:
+                available_options = [
+                    col for col in uploaded_data[gpu_mon_label][0].columns
+                    if col not in st.session_state.selected_columns
+                ]  # 既に選択された列を除外
+                selected_column = st.selectbox(
+                    f"Add Y-axis column ({gpu_mon_label})",
+                    options=[""] + available_options,  # 空の選択肢を追加
+                    key=f"y_axis_{gpu_mon_label}"
+                )
+                if selected_column and selected_column not in st.session_state.selected_columns:
+                    st.session_state.selected_columns.append(selected_column)
+            else:
+                st.selectbox(
+                    f"Add Y-axis column ({gpu_mon_label})",
+                    options=[],
+                    key=f"y_axis_{gpu_mon_label}",
+                    disabled=True
+                )
 
 
 
