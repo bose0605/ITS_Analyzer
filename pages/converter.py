@@ -254,7 +254,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📊 Data Wrangling & Visualization UI")
-st.subheader("Drag & drop log files (multiple or single)")
+st.subheader(":one: Drag & drop log files (multiple or single)")
 
 
 # === 1. File Upload UI ===
@@ -384,12 +384,17 @@ st.markdown("""
 # === 2. Run Conversion Condition Check ===
 valid_uploaded_count = sum(1 for label in uploaded_data if uploaded_data[label])
 
-plot_mode = st.radio("Select plotting mode (Segment : Not create merged time column, Merged : Create 'Time (Merged)' column", ["Segment", "Merged"], horizontal=True)
+st.subheader(":two: Select plotting mode")
+plot_mode = st.radio(
+    "Segment : Not create merged time column, Merged : Create 'Time (Merged)' column",
+    ["Segment", "Merged"],
+    horizontal=True
+)
 if "run_conversion" not in st.session_state:
     st.session_state.run_conversion = False
         # CSSで横長スタイルに
     
-if st.button("▶️ Run Conversion"):
+if st.button("🚀 Run Conversion"):
     if valid_uploaded_count >= 1:
         with st.spinner("⏳ Converting and Merging logs..."):
             st.session_state.run_conversion = True
@@ -469,7 +474,7 @@ if st.session_state.run_conversion:
 
         merged_df = st.session_state.get("merged_df")
 
-        # --- 修正ここ부터 ---
+        # --- 修正ここから ---
         if merged_df is not None and isinstance(merged_df, pd.DataFrame):
             available_columns = list(merged_df.columns)
             plot_df = merged_df
@@ -482,124 +487,135 @@ if st.session_state.run_conversion:
                     available_columns = list(dfs[0].columns)
                     plot_df = dfs[0]
                     break
-        # --- 修正ここまで ---
 
-        if not available_columns:
-            st.warning("⚠️ データをアップロードし、Run Conversionを押してください。")
-        else:
-            st.session_state.x_axis = st.selectbox(
-                "Select X-axis column",
-                options=available_columns,
-                index=available_columns.index(st.session_state.x_axis) if st.session_state.x_axis in available_columns else 0
-            )
+        # Mergedモード時は "Time (Merged)" をデフォルトでセット
+        if plot_mode == "Merged" and "Time (Merged)" in available_columns:
+            st.session_state.x_axis = "Time (Merged)"
+        elif st.session_state.x_axis not in available_columns:
+            st.session_state.x_axis = available_columns[0] if available_columns else None
+            # ▼▼▼ 1st Y-axis Expander ▼▼▼
+        with st.expander("1st X＆Y-axis", expanded=True):
+            # Select X-axis column
+            if not available_columns:
+                st.warning("⚠️ データをアップロードし、Run Conversionを押してください。")
+            else:
+                st.session_state.x_axis = st.selectbox(
+                    "Select X-axis column (Skin temp)",
+                    options=available_columns,
+                    index=available_columns.index(st.session_state.x_axis) if st.session_state.x_axis in available_columns else 0
+                )
 
-        # Add Y-axis column (5×2配置)
-        y_axis_cols_row1 = st.columns(len(file_labels))  # 1行目: 각 업로더
-        y_axis_cols_row2 = st.columns(5)  # 2행目: Wistron Tool + GPU mon + 空白3つ
+            # Add Y-axis column (5×2配置)
+            y_axis_cols_row1 = st.columns(len(file_labels))  # 1行目: 各アップローダー
+            y_axis_cols_row2 = st.columns(5)  # 2行目: Wistron Tool + GPU mon + 空白3つ
 
-        # 선택된 열을 저장할 리스트 (세션 스테이트로 관리)
-        if "selected_columns" not in st.session_state:
-            st.session_state.selected_columns = []
+            # 선택된 열을 저장할 리스트 (세션 스테이트로 관리)
+            if "selected_columns" not in st.session_state:
+                st.session_state.selected_columns = []
 
-        # 1행目: 각 업로더에 대응하는 selectbox 생성
-        for i, label in enumerate(file_labels):
-            with y_axis_cols_row1[i]:
-                if label in uploaded_data and uploaded_data[label]:  # 업로드된 데이터가 있는 경우
+            # 1行目: 各アップローダーに対応するselectboxを生成
+            for i, label in enumerate(file_labels):
+                with y_axis_cols_row1[i]:
+                    if label in uploaded_data and uploaded_data[label]:  # アップロードされたデータがある場合
+                        available_options = [
+                            col for col in uploaded_data[label][0].columns
+                            if col not in st.session_state.selected_columns
+                        ]  # すでに選択された列を除外
+                        selected_column = st.selectbox(
+                            f"Add Y-axis column ({label})",
+                            options=[""] + available_options,  # 空の選択肢を追加
+                            key=f"y_axis_{label}"
+                        )
+                        if selected_column and selected_column not in st.session_state.selected_columns:
+                            st.session_state.selected_columns.append(selected_column)
+                    else:  # アップロードされていない場合
+                        st.selectbox(
+                            f"Add Y-axis column ({label})",
+                            options=[],
+                            key=f"y_axis_{label}",
+                            disabled=True
+                        )
+
+            # 2行目: Wistron ToolとGPU monに対応するselectboxを生成
+            wistron_tool_label = "Wistron Tool"
+            gpu_mon_label = "GPU mon"
+
+            with y_axis_cols_row2[0]:  # 2行目の左から1番目
+                if wistron_tool_label in uploaded_data and uploaded_data[wistron_tool_label]:
                     available_options = [
-                        col for col in uploaded_data[label][0].columns
+                        col for col in uploaded_data[wistron_tool_label][0].columns
                         if col not in st.session_state.selected_columns
-                    ]  # 이미 선택된 열 제외
+                    ]  # すでに選択された列を除外
                     selected_column = st.selectbox(
-                        f"Add Y-axis column ({label})",
-                        options=[""] + available_options,  # 빈 선택지 추가
-                        key=f"y_axis_{label}"
+                        f"Add Y-axis column ({wistron_tool_label})",
+                        options=[""] + available_options,  # 空の選択肢を追加
+                        key=f"y_axis_{wistron_tool_label}"
                     )
                     if selected_column and selected_column not in st.session_state.selected_columns:
                         st.session_state.selected_columns.append(selected_column)
-                else:  # 업로드되지 않은 경우
+                else:
                     st.selectbox(
-                        f"Add Y-axis column ({label})",
+                        f"Add Y-axis column ({wistron_tool_label})",
                         options=[],
-                        key=f"y_axis_{label}",
+                        key=f"y_axis_{wistron_tool_label}",
                         disabled=True
                     )
 
-        # 2행目: Wistron Tool 과 GPU mon 에 대응하는 selectbox 생성
-        wistron_tool_label = "Wistron Tool"
-        gpu_mon_label = "GPU mon"
+            with y_axis_cols_row2[1]:  # 2行目の左から2番目
+                if gpu_mon_label in uploaded_data and uploaded_data[gpu_mon_label]:
+                    available_options = [
+                        col for col in uploaded_data[gpu_mon_label][0].columns
+                        if col not in st.session_state.selected_columns
+                    ]  # すでに選択された列を除外
+                    selected_column = st.selectbox(
+                        f"Add Y-axis column ({gpu_mon_label})",
+                        options=[""] + available_options,  # 空の選択肢を追加
+                        key=f"y_axis_{gpu_mon_label}"
+                    )
+                    if selected_column and selected_column not in st.session_state.selected_columns:
+                        st.session_state.selected_columns.append(selected_column)
+                else:
+                    st.selectbox(
+                        f"Add Y-axis column ({gpu_mon_label})",
+                        options=[],
+                        key=f"y_axis_{gpu_mon_label}",
+                        disabled=True
+                    )
 
-        with y_axis_cols_row2[0]:  # 2행目の左から1番目
-            if wistron_tool_label in uploaded_data and uploaded_data[wistron_tool_label]:
-                available_options = [
-                    col for col in uploaded_data[wistron_tool_label][0].columns
-                    if col not in st.session_state.selected_columns
-                ]  # すでに選択された列を除外
-                selected_column = st.selectbox(
-                    f"Add Y-axis column ({wistron_tool_label})",
-                    options=[""] + available_options,  # 空の選択肢を追加
-                    key=f"y_axis_{wistron_tool_label}"
-                )
-                if selected_column and selected_column not in st.session_state.selected_columns:
-                    st.session_state.selected_columns.append(selected_column)
-            else:
-                st.selectbox(
-                    f"Add Y-axis column ({wistron_tool_label})",
-                    options=[],
-                    key=f"y_axis_{wistron_tool_label}",
-                    disabled=True
-                )
+            # ▼ multiselectを追加
+            selected_columns = st.multiselect(
+                "Selected Y-axis columns (Sensor temp)",
+                options=st.session_state.get("selected_columns", []),
+                default=st.session_state.get("selected_columns", []),
+                key="y_axis_multiselect",
+                disabled=False
+            )
 
-        with y_axis_cols_row2[1]:  # 2行目の左から2番目
-            if gpu_mon_label in uploaded_data and uploaded_data[gpu_mon_label]:
-                available_options = [
-                    col for col in uploaded_data[gpu_mon_label][0].columns
-                    if col not in st.session_state.selected_columns
-                ]  # すでに選択された列を除外
-                selected_column = st.selectbox(
-                    f"Add Y-axis column ({gpu_mon_label})",
-                    options=[""] + available_options,  # 空の選択肢を追加
-                    key=f"y_axis_{gpu_mon_label}"
-                )
-                if selected_column and selected_column not in st.session_state.selected_columns:
-                    st.session_state.selected_columns.append(selected_column)
-            else:
-                st.selectbox(
-                    f"Add Y-axis column ({gpu_mon_label})",
-                    options=[],
-                    key=f"y_axis_{gpu_mon_label}",
-                    disabled=True
-                )
-        # ▼ ここでmultiselectを追加
-        st.session_state.selected_columns = st.multiselect(
-            "Selected Y-axis columns",
-            options=st.session_state.selected_columns,
-            default=st.session_state.selected_columns,
-            key="y_axis_multiselect",
-            disabled=False
-        )
+            # 選択された列を即座に反映
+            st.session_state["selected_columns"] = selected_columns
 
-        # ▼▼▼ ここからPlotlyグラフ描画 ▼▼▼
+        # 2nd Y-axis Expander
+        with st.expander("2nd Y-axis", expanded=False):
+            # Add Y-axis column (5×2配置)
+            y_axis_cols_row1 = st.columns(len(file_labels))  # 1行目: 各アップローダー
+            y_axis_cols_row2 = st.columns(5)  # 2行目: Wistron Tool + GPU mon + 空白3つ
 
+        # Chart options Expander
         with st.expander(":hammer_and_wrench: Chart options", expanded=False):  # Expanderを追加
             # カラーマップ選択
             colormap_list = sorted(plt.colormaps())
-            default_cmap = "viridis"
+            default_cmap = "brg"  # デフォルトを 'brg' に設定
 
-            if "plotly_colormap" not in st.session_state:
-                st.session_state["plotly_colormap"] = default_cmap
-
+            # 選択されたカラーマップを取得
             selected_cmap = st.selectbox(
                 "🎨Choose colormap for the Chart",
                 colormap_list,
-                index=colormap_list.index(st.session_state["plotly_colormap"]),
+                index=colormap_list.index(st.session_state.get("plotly_colormap", default_cmap)),
                 key="plotly_colormap_select"
             )
 
-            # 選択されたカラーマップをセッションステートに保存
-            st.session_state["plotly_colormap"] = selected_cmap
-
             # カラーマップを取得
-            cmap = plt.get_cmap(st.session_state["plotly_colormap"])
+            cmap = plt.get_cmap(selected_cmap)
 
             # X軸とY軸の列を取得
             x_col = st.session_state.get("x_axis")
@@ -633,10 +649,32 @@ if st.session_state.run_conversion:
                 yaxis_title=y_axis_title,
                 legend_title="Y Columns",
                 height=500,
-                margin=dict(l=40, r=40, t=40, b=40)
+                margin=dict(l=40, r=40, t=40, b=40),
+                updatemenus=[
+                    dict(
+                        type="buttons",
+                        direction="right",
+                        xanchor="right",
+                        x=1.0,
+                        yanchor="top",
+                        y=1.08,
+                        showactive=True,
+                        pad={"r": 0, "t": 0},
+                        buttons=[
+                            dict(
+                                label="Legend on",
+                                method="relayout",
+                                args=[{"showlegend": True}]
+                            ),
+                            dict(
+                                label="Legend off",
+                                method="relayout",
+                                args=[{"showlegend": False}]
+                            )
+                        ]
+                    )
+                ]
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.warning("⚠️ Please select at least one X-axis and Y-axis column to plot.")
-
-
