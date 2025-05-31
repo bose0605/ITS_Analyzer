@@ -15,22 +15,24 @@ from streamlit_tags import st_tags  # 必要に応じてインポート
 
 st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
-st.markdown("""
-<style>
-button[data-testid="stDownloadButton-template-download"] {
-    background-color: #039CB2;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 0.5rem 1rem;
-    font-size: 1rem;
-    margin-top: 30px;
-}
-button[data-testid="stDownloadButton-template-download"]:hover {
-    background-color: #105d96;
-}
-</style>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <style>
+    div.stDownloadButton > button {
+        background-color: crimson;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-size: 1rem;
+    }
+    div.stDownloadButton > button:hover {
+        background-color: darkred;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # === THI parser ===
 def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
@@ -241,6 +243,17 @@ top_col_right = st.columns([8, 1])
 with top_col_right[1]:
     st.page_link("main.py", label="🏠 To Main")
 
+# 🌈 虹色ライン
+st.markdown("""
+<hr style="
+  height: 8px;
+  border: none;
+  border-radius: 3px;
+  background: linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet);
+  margin-top: 10px;
+  margin-bottom: 4px;
+">
+""", unsafe_allow_html=True)
 st.markdown("""
     <style>
     html, body, [class^="css"]  {
@@ -254,7 +267,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📊 Data Wrangling & Visualization UI")
-st.subheader(":one: Drag & drop log files (multiple or single)")
+st.subheader(":one: Drag & drop log files (Available multiple and single)")
 
 
 # === 1. File Upload UI ===
@@ -429,30 +442,36 @@ if st.session_state.run_conversion:
                     start_times.append(df["Time"].iloc[0])
 
                 reference_time = min(start_times) if len(start_times) > 1 else start_times[0]
-                st.info(f"⏰ Reference Time: {reference_time.strftime('%H:%M:%S')}")
+                
+                # 2段組みのレイアウトを作成 (1:4の比率)
+                ref_time_cols = st.columns([1, 2,1])
 
-                trimmed_dfs = [df[df["Time"] >= reference_time].copy().reset_index(drop=True) for df in dfs]
+                with ref_time_cols[1]:  # 左側にReference Timeを表示
+                    st.info(f"⏰ Reference Time: {reference_time.strftime('%H:%M:%S')}")
 
-                merged_df = trimmed_dfs[0]
-                for df in trimmed_dfs[1:]:
-                    merged_df = pd.merge(merged_df, df, on="Time", how="outer")
+                with ref_time_cols[0]:  # 右側にダウンロードボタンを配置
+                    trimmed_dfs = [df[df["Time"] >= reference_time].copy().reset_index(drop=True) for df in dfs]
 
-                merged_df = merged_df.sort_values("Time").reset_index(drop=True)
-                merged_df["Time"] = merged_df["Time"].dt.strftime("%H:%M:%S")
+                    merged_df = trimmed_dfs[0]
+                    for df in trimmed_dfs[1:]:
+                        merged_df = pd.merge(merged_df, df, on="Time", how="outer")
 
-                # 重複防止して1回だけTime (Merged) にする
-                if "Time (Merged)" not in merged_df.columns:
-                    merged_df.rename(columns={"Time": "Time (Merged)"}, inplace=True)
+                    merged_df = merged_df.sort_values("Time").reset_index(drop=True)
+                    merged_df["Time"] = merged_df["Time"].dt.strftime("%H:%M:%S")
 
-                st.session_state["merged_df"] = merged_df
+                    # 重複防止して1回だけTime (Merged) にする
+                    if "Time (Merged)" not in merged_df.columns:
+                        merged_df.rename(columns={"Time": "Time (Merged)"}, inplace=True)
 
-                csv_merged = merged_df.to_csv(index=False, encoding="utf-8-sig")
-                st.download_button(
-                    label="📥 Download Merged CSV",
-                    data=csv_merged,
-                    file_name="merged_logs.csv",
-                    mime="text/csv"
-                )
+                    st.session_state["merged_df"] = merged_df
+
+                    csv_merged = merged_df.to_csv(index=False, encoding="utf-8-sig")
+                    st.download_button(
+                        label="📥 Download Merged CSV",
+                        data=csv_merged,
+                        file_name="merged_logs.csv",
+                        mime="text/csv"
+                    )
 
             except Exception as e:
                 st.error(f"❌ Merge failed during conversion: {e}")
@@ -516,6 +535,7 @@ if st.session_state.run_conversion:
             # 1行目: 各アップローダーに対応するselectboxを生成
             for i, label in enumerate(file_labels):
                 with y_axis_cols_row1[i]:
+                    selected_column_key = f"y_axis_{label}"
                     if label in uploaded_data and uploaded_data[label]:  # アップロードされたデータがある場合
                         available_options = [
                             col for col in uploaded_data[label][0].columns
@@ -524,15 +544,16 @@ if st.session_state.run_conversion:
                         selected_column = st.selectbox(
                             f"Add Y-axis column ({label})",
                             options=[""] + available_options,  # 空の選択肢を追加
-                            key=f"y_axis_{label}"
+                            key=selected_column_key
                         )
                         if selected_column and selected_column not in st.session_state.selected_columns:
-                            st.session_state.selected_columns.append(selected_column)
+                            st.session_state.selected_columns.append(selected_column)  # 即座に追加
+                            st.session_state[selected_column_key] = ""
                     else:  # アップロードされていない場合
                         st.selectbox(
                             f"Add Y-axis column ({label})",
                             options=[],
-                            key=f"y_axis_{label}",
+                            key=selected_column_key,
                             disabled=True
                         )
 
@@ -541,6 +562,7 @@ if st.session_state.run_conversion:
             gpu_mon_label = "GPU mon"
 
             with y_axis_cols_row2[0]:  # 2行目の左から1番目
+                selected_column_key = f"y_axis_{wistron_tool_label}"
                 if wistron_tool_label in uploaded_data and uploaded_data[wistron_tool_label]:
                     available_options = [
                         col for col in uploaded_data[wistron_tool_label][0].columns
@@ -549,19 +571,21 @@ if st.session_state.run_conversion:
                     selected_column = st.selectbox(
                         f"Add Y-axis column ({wistron_tool_label})",
                         options=[""] + available_options,  # 空の選択肢を追加
-                        key=f"y_axis_{wistron_tool_label}"
+                        key=selected_column_key
                     )
                     if selected_column and selected_column not in st.session_state.selected_columns:
-                        st.session_state.selected_columns.append(selected_column)
+                        st.session_state.selected_columns.append(selected_column)  # 即座に追加
+                        st.session_state[selected_column_key] = ""
                 else:
                     st.selectbox(
                         f"Add Y-axis column ({wistron_tool_label})",
                         options=[],
-                        key=f"y_axis_{wistron_tool_label}",
+                        key=selected_column_key,
                         disabled=True
                     )
 
             with y_axis_cols_row2[1]:  # 2行目の左から2番目
+                selected_column_key = f"y_axis_{gpu_mon_label}"
                 if gpu_mon_label in uploaded_data and uploaded_data[gpu_mon_label]:
                     available_options = [
                         col for col in uploaded_data[gpu_mon_label][0].columns
@@ -570,15 +594,16 @@ if st.session_state.run_conversion:
                     selected_column = st.selectbox(
                         f"Add Y-axis column ({gpu_mon_label})",
                         options=[""] + available_options,  # 空の選択肢を追加
-                        key=f"y_axis_{gpu_mon_label}"
+                        key=selected_column_key
                     )
                     if selected_column and selected_column not in st.session_state.selected_columns:
-                        st.session_state.selected_columns.append(selected_column)
+                        st.session_state.selected_columns.append(selected_column)  # 即座に追加
+                        st.session_state[selected_column_key] = ""
                 else:
                     st.selectbox(
                         f"Add Y-axis column ({gpu_mon_label})",
                         options=[],
-                        key=f"y_axis_{gpu_mon_label}",
+                        key=selected_column_key,
                         disabled=True
                     )
 
@@ -600,81 +625,343 @@ if st.session_state.run_conversion:
             y_axis_cols_row1 = st.columns(len(file_labels))  # 1行目: 各アップローダー
             y_axis_cols_row2 = st.columns(5)  # 2行目: Wistron Tool + GPU mon + 空白3つ
 
-        # Chart options Expander
-        with st.expander(":hammer_and_wrench: Chart options", expanded=False):  # Expanderを追加
-            # カラーマップ選択
-            colormap_list = sorted(plt.colormaps())
-            default_cmap = "brg"  # デフォルトを 'brg' に設定
+            # 選択された列を保存するリスト (セッションステートで管理)
+            if "secondary_selected_columns" not in st.session_state:
+                st.session_state.secondary_selected_columns = []
 
-            # 選択されたカラーマップを取得
-            selected_cmap = st.selectbox(
-                "🎨Choose colormap for the Chart",
-                colormap_list,
-                index=colormap_list.index(st.session_state.get("plotly_colormap", default_cmap)),
-                key="plotly_colormap_select"
+            # 1行目: 各アップローダーに対応するselectboxを生成
+            for i, label in enumerate(file_labels):
+                with y_axis_cols_row1[i]:
+                    selected_column_key = f"secondary_y_axis_selectbox_{label}"
+                    if label in uploaded_data and uploaded_data[label]:  # アップロードされたデータがある場合
+                        available_options = [
+                            col for col in uploaded_data[label][0].columns
+                            if col not in st.session_state.secondary_selected_columns
+                        ]  # すでに選択された列を除外
+                        selected_column = st.selectbox(
+                            f"Add 2nd Y-axis column ({label})",
+                            options=[""] + available_options,
+                            key=selected_column_key
+                        )
+                        if selected_column and selected_column not in st.session_state.secondary_selected_columns:
+                            st.session_state.secondary_selected_columns.append(selected_column)
+                            st.session_state[selected_column_key] = ""  # 選択を即クリア
+
+                    else:
+                        st.selectbox(
+                            f"Add 2nd Y-axis column ({label})",
+                            options=[],
+                            key=f"secondary_y_axis_selectbox_{label}",
+                            disabled=True
+                        )
+
+            # 2行目: Wistron ToolとGPU monに対応するselectboxを生成
+            wistron_tool_label = "Wistron Tool"
+            gpu_mon_label = "GPU mon"
+
+            with y_axis_cols_row2[0]:  # 2行目の左から1番目
+                selected_column_key =f"secondary_y_axis_selectbox_{wistron_tool_label}"
+                if wistron_tool_label in uploaded_data and uploaded_data[wistron_tool_label]:
+                    available_options = [
+                        col for col in uploaded_data[wistron_tool_label][0].columns
+                        if col not in st.session_state.secondary_selected_columns
+                    ]  # すでに選択された列を除外
+                    selected_column = st.selectbox(
+                        f"Add 2nd Y-axis column ({wistron_tool_label})",
+                        options=[""] + available_options,  # 空の選択肢を追加
+                        key=selected_column_key
+                    )
+                    if selected_column and selected_column not in st.session_state.secondary_selected_columns:
+                        st.session_state.secondary_selected_columns.append(selected_column)
+                        st.session_state[selected_column_key] = ""  # 選択を即クリア
+                else:
+                    st.selectbox(
+                        f"Add 2nd Y-axis column ({wistron_tool_label})",
+                        options=[],
+                        key=selected_column_key,
+                        disabled=True
+                    )
+
+            with y_axis_cols_row2[1]:  # 2行目の左から2番目
+                selected_column_key =f"secondary_y_axis_selectbox_{gpu_mon_label}"
+                if gpu_mon_label in uploaded_data and uploaded_data[gpu_mon_label]:
+                    available_options = [
+                        col for col in uploaded_data[gpu_mon_label][0].columns
+                        if col not in st.session_state.secondary_selected_columns
+                    ]  # すでに選択された列を除外
+                    selected_column = st.selectbox(
+                        f"Add 2nd Y-axis column ({gpu_mon_label})",
+                        options=[""] + available_options,  # 空の選択肢を追加
+                        key=selected_column_key 
+                    )
+                    if selected_column and selected_column not in st.session_state.secondary_selected_columns:
+                        st.session_state.secondary_selected_columns.append(selected_column)
+                        st.session_state[selected_column_key] = ""  # 選択を即クリア
+                else:
+                    st.selectbox(
+                        f"Add 2nd Y-axis column ({gpu_mon_label})",
+                        options=[],
+                        key=selected_column_key,
+                        disabled=True
+                    )
+
+            # ▼ multiselectを追加
+            selected_columns = st.multiselect(
+                "Selected 2nd Y-axis columns (Sensor temp)",
+                options=st.session_state.secondary_selected_columns,
+                default=st.session_state.secondary_selected_columns,
+                key="selected_secondary_y_axis_multiselect",
+                disabled=False
             )
 
+            # 選択された列をセッションステートに反映
+            st.session_state.secondary_selected_columns = selected_columns
+
+        # Chart options Expander
+        with st.expander(":hammer_and_wrench: Chart options", expanded=False):
+            # カラーマップ選択
+            colormap_list = sorted(plt.colormaps())
+            default_cmap = "jet" 
+
+            # 3段組のレイアウトを作成
+            chart_option_cols = st.columns(3)
+
+            # 左の列: カラーマップ選択
+            with chart_option_cols[0]:
+                if "plotly_colormap" not in st.session_state:
+                    st.session_state["plotly_colormap"] = "jet"
+
+                # 明示的に現在の選択を取得する変数（この行で確実に更新された値が入る）
+                current_cmap_selection = st.selectbox(
+                    "🎨 Choose colormap for the Chart",
+                    colormap_list,
+                    index=colormap_list.index(st.session_state["plotly_colormap"]),
+                    key="plotly_colormap"
+                )
+                # 明示的に選択を反映（セッションステートは更新されるが、即反映にはこの変数を使うのが安全）
+                cmap = plt.get_cmap(current_cmap_selection)
+
+            # 中央の列: 1st Y-axis shape
+            with chart_option_cols[1]:
+                y1_shapes = ["lines", "markers", "lines+markers"]
+                selected_y1_shape = st.selectbox(
+                    "1st Y-axis shape",
+                    y1_shapes,
+                    index=0,  # デフォルトは "lines"
+                    key="y1_axis_shape_select"
+                )
+
+            # 右の列: 2nd Y-axis shape
+            with chart_option_cols[2]:
+                y2_shapes = ["lines", "markers", "lines+markers"]
+                selected_y2_shape = st.selectbox(
+                    "2nd Y-axis shape",
+                    y2_shapes,
+                    index=1,  # デフォルトは "markers"
+                    key="y2_axis_shape_select"
+                )
+
             # カラーマップを取得
-            cmap = plt.get_cmap(selected_cmap)
+            cmap = plt.get_cmap(st.session_state.get("plotly_colormap", "jet"))
 
             # X軸とY軸の列を取得
             x_col = st.session_state.get("x_axis")
-            y_cols = st.session_state.get("selected_columns", [])
+            y_cols = st.session_state.get("selected_columns", [])  # 1st Y-axis columns
+            secondary_y_cols = st.session_state.get("secondary_selected_columns", [])  # 2nd Y-axis columns
 
-            # 2段組みのテキスト入力を追加
-            x_y_title_cols = st.columns(2)
+            # 第一軸と第二軸の列を結合
+            plot_cols = y_cols + secondary_y_cols
+
+            color_map_ui = {
+                col: mcolors.to_hex(cmap(i / max(len(plot_cols) - 1, 1)))
+                for i, col in enumerate(plot_cols)
+            }
+
+            # 3段組のテキスト入力を追加
+            x_y_title_cols = st.columns(3)
             with x_y_title_cols[0]:
                 x_axis_title = st.text_input("X-axis title", value="X-axis", key="x_axis_title")
             with x_y_title_cols[1]:
                 y_axis_title = st.text_input("Y-axis title", value="Y-axis", key="y_axis_title")
+            with x_y_title_cols[2]:
+                second_y_axis_title = st.text_input("2nd Y-axis title", value="Secondary Y-axis", key="second_y_axis_title")
 
-        if plot_df is not None and x_col and y_cols:
-            fig = go.Figure()
+    # Plotly描画部分
+plot_df = None  # 初期値としてNoneを設定
+if st.session_state.run_conversion:
+    # Run Conversionが押された後にplot_dfを設定
+    merged_df = st.session_state.get("merged_df")
 
-            # データ数に依存する配色
+    if merged_df is not None and isinstance(merged_df, pd.DataFrame):
+        plot_df = merged_df
+    else:
+        # Segmentモードやデータがない場合、アップロード済みの最初のデータフレームを使用
+        for dfs in uploaded_data.values():
+            if dfs and isinstance(dfs[0], pd.DataFrame):
+                plot_df = dfs[0]
+                break
+
+if plot_df is not None and x_col:
+    # 選択された列を含むデータフレームを作成
+    selected_columns = [x_col] + y_cols + st.session_state.get("secondary_selected_columns", [])
+    export_df = plot_df[selected_columns].copy()
+
+    # データをExcelファイルに保存
+    def convert_df_to_excel_with_chart(df):
+        # Excel用にlineとmarkerの構成を返す関数
+        def get_excel_line_marker_config(shape, color):
+            if shape == "lines":
+                return {
+                    "line": {"color": color},
+                    "marker": {"type": "none"}  # 明示的にマーカー無しを指定
+                }
+            elif shape == "markers":
+                return {
+                    "line": {"none": True},
+                    "marker": {"type": "circle", "size": 5, "border": {"none": True}, "fill": {"color": color}}
+                }
+            elif shape == "lines+markers":
+                return {
+                    "line": {"color": color},
+                    "marker": {"type": "circle", "size": 5, "border": {"none": True}, "fill": {"color": color}}
+                }
+            else:
+                return {
+                    "line": {"color": color},
+                    "marker": {"type": "none"}  # fallback
+                }
+
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            # データを書き込む
+            df.to_excel(writer, index=False, sheet_name="Plot Data")
+
+            # ワークブックとワークシートを取得
+            workbook = writer.book
+            worksheet = writer.sheets["Plot Data"]
+
+            # 各列の幅を77ピクセルに設定
+            worksheet.set_column(0, len(df.columns) - 1, 77 / 7)  # 1文字幅は約7ピクセル
+
+            # グラフを作成
+            chart = workbook.add_chart({"type": "scatter", "subtype": "straight_with_markers"})
+
+            # マーカータイプのマッピング
+            marker_mapping = {
+                "lines": None,
+                "markers": "circle",
+                "lines+markers": "circle"
+            }
+
+            # 第一軸のデータを追加
             for i, y in enumerate(y_cols):
-                if y in plot_df.columns:
-                    color = mcolors.to_hex(cmap(i / max(len(y_cols) - 1, 1)))  # データ数に基づく色を取得
-                    fig.add_trace(go.Scatter(
-                        x=plot_df[x_col],
-                        y=plot_df[y],
-                        mode="lines",
-                        name=y,
-                        line=dict(color=color)
-                    ))
+                if y in df.columns:
+                    color = color_map_ui[y]
+                    config = get_excel_line_marker_config(selected_y1_shape, color)
+                    chart.add_series({
+                        "name": y,
+                        "categories": ["Plot Data", 1, 0, len(df), 0],
+                        "values": ["Plot Data", 1, i + 1, len(df), i + 1],
+                        "line": config["line"],
+                        "marker": config["marker"]
+                    })
 
-            # X軸とY軸のタイトルを設定
-            fig.update_layout(
-                xaxis_title=x_axis_title,
-                yaxis_title=y_axis_title,
-                legend_title="Y Columns",
-                height=500,
-                margin=dict(l=40, r=40, t=40, b=40),
-                updatemenus=[
-                    dict(
-                        type="buttons",
-                        direction="right",
-                        xanchor="right",
-                        x=1.0,
-                        yanchor="top",
-                        y=1.08,
-                        showactive=True,
-                        pad={"r": 0, "t": 0},
-                        buttons=[
-                            dict(
-                                label="Legend on",
-                                method="relayout",
-                                args=[{"showlegend": True}]
-                            ),
-                            dict(
-                                label="Legend off",
-                                method="relayout",
-                                args=[{"showlegend": False}]
-                            )
-                        ]
-                    )
-                ]
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.warning("⚠️ Please select at least one X-axis and Y-axis column to plot.")
+            # 第二軸のデータを追加
+            secondary_y_cols = st.session_state.get("secondary_selected_columns", [])
+            for i, y in enumerate(secondary_y_cols):
+                if y in df.columns:
+                    color = color_map_ui[y]
+                    config = get_excel_line_marker_config(selected_y2_shape, color)
+                    chart.add_series({
+                        "name": y,
+                        "categories": ["Plot Data", 1, 0, len(df), 0],
+                        "values": ["Plot Data", 1, len(y_cols) + i + 1, len(df), len(y_cols) + i + 1],
+                        "line": config["line"],
+                        "marker": config["marker"],
+                        "y2_axis": True
+                    })
+
+
+            # グラフのレイアウトを設定
+            chart.set_title({"name": "Plot Data Chart"})
+            chart.set_x_axis({"name": x_axis_title})
+            chart.set_y_axis({"name": y_axis_title})
+            chart.set_y2_axis({"name": second_y_axis_title})
+
+            # グラフをワークシートに挿入
+            worksheet.insert_chart("B6", chart, {"x_scale": 1.8, "y_scale": 1.8})
+
+        return output.getvalue()
+
+    excel_data = convert_df_to_excel_with_chart(export_df)
+
+    # ダウンロードボタン
+    st.download_button(
+        label="📥 To XLSX Output (with Charts)",  # ボタンのラベルを設定
+        data=excel_data,
+        file_name="plot_data_with_chart.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    # Plotlyグラフの描画
+    fig = go.Figure()
+
+    # 第一軸の描画
+    for i, y in enumerate(y_cols):
+        if y in plot_df.columns:
+            color = mcolors.to_hex(cmap(i / max(len(plot_cols) - 1, 1)))  # 選択したカラーマップを使用
+            mode = selected_y1_shape  # 1st Y-axis shape の選択内容を反映
+            fig.add_trace(go.Scatter(
+                x=plot_df[x_col],
+                y=plot_df[y],
+                mode=mode,  # 選択した形状を適用
+                name=y,
+                line=dict(color=color),  # カラーマップの色を適用
+                yaxis="y"
+            ))
+
+    # 第二軸の描画
+    for i, y in enumerate(secondary_y_cols):
+        if y in plot_df.columns:
+            color = mcolors.to_hex(cmap((i + len(y_cols)) / max(len(plot_cols) - 1, 1)))  # 選択したカラーマップを使用
+            mode = selected_y2_shape  # 2nd Y-axis shape の選択内容を反映
+            fig.add_trace(go.Scatter(
+                x=plot_df[x_col],
+                y=plot_df[y],
+                mode=mode,  # 選択した形状を適用
+                name=y,
+                marker=dict(color=color),  # カラーマップの色を適用
+                yaxis="y2"
+            ))
+
+    # レイアウト設定
+    fig.update_layout(
+        xaxis=dict(
+            title=dict(
+                text=x_axis_title,
+                font=dict(size=18)  # X軸タイトルのフォントサイズを設定
+            ),
+            tickfont=dict(size=16)  # X軸の値のフォントサイズを設定
+        ),
+        yaxis=dict(
+            title=dict(
+                text=y_axis_title,
+                font=dict(size=18)  # Y軸タイトルのフォントサイズを設定
+            ),
+            tickfont=dict(size=16)  # Y軸の値のフォントサイズを設定
+        ),
+        yaxis2=dict(
+            title=dict(
+                text=second_y_axis_title,
+                font=dict(size=18)  # 2nd Y軸タイトルのフォントサイズを設定
+            ),
+            tickfont=dict(size=16),  # 2nd Y軸の値のフォントサイズを設定
+            overlaying="y",
+            side="right",
+            showgrid=False
+        ),
+        font=dict(size=16),  # 全体のフォントサイズを設定
+        height=700,
+        margin=dict(l=40, r=40, t=40, b=40),
+        showlegend=True
+    )
+    st.plotly_chart(fig, use_container_width=True)
