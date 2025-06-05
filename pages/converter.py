@@ -34,6 +34,14 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+def sanitize_numeric_columns(df: pd.DataFrame, exclude_columns=None) -> pd.DataFrame:
+    if exclude_columns is None:
+        exclude_columns = []
+    for col in df.columns:
+        if col not in exclude_columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df
+
 # === THI parser ===
 def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
     header = [
@@ -69,6 +77,7 @@ def convert_thi_txt_to_df(file_content: str) -> pd.DataFrame:
         return pd.DataFrame()
     df = pd.DataFrame(data, columns=header)
     df["ATM"] = df["ATM"].astype(str)
+    df = sanitize_numeric_columns(df, exclude_columns=["Time"])
     return df
 # === Wistron tool Parser ===
 def convert_wistron_tool_file(uploaded_file):
@@ -96,8 +105,11 @@ def convert_wistron_tool_file(uploaded_file):
         return output.getvalue()
 
     excel_data = convert_df_to_excel(df)
+    df[time_col] = df[time_col].dt.strftime("%H:%M:%S")
+    df = sanitize_numeric_columns(df, exclude_columns=["Time"])
     return df, excel_data
 
+# === GPUmon tool Parser ===
 def convert_gpumon_file(file) -> pd.DataFrame:
     try:
         # 64행이 헤더니까 그 전 줄은 건너뛰기
@@ -111,7 +123,7 @@ def convert_gpumon_file(file) -> pd.DataFrame:
         df.insert(0, "Time", time_col)
 
         df.columns = ["Time"] + [f"{col} (GPUmon)" for col in df.columns[1:]]
-
+        df = sanitize_numeric_columns(df, exclude_columns=["Time"]) 
         return df
 
     except Exception as e:
@@ -210,8 +222,9 @@ def convert_fanck_file(file) -> pd.DataFrame:
 
     df.iloc[:, 0] = df.iloc[:, 0].apply(convert_to_time).astype(str)
     original_cols = df.columns.tolist()
-    renamed_cols = ["Time"] + [f"{col} (FanCK)" for col in original_cols[1:]]
+    renamed_cols = ["Time"] + [f"{col}" for col in original_cols[1:]]
     df.columns = renamed_cols
+    df = sanitize_numeric_columns(df, exclude_columns=["Time"])
     return df
 
 # === Generic CSV Reader (pTAT, DTT) ===
@@ -235,7 +248,7 @@ def read_generic_csv(file, label: str) -> pd.DataFrame:
         else:
             renamed_cols.append(f"{col} ({label})")
     df.columns = renamed_cols
-   
+    df = sanitize_numeric_columns(df, exclude_columns=[col for col in df.columns if "Time" in col])  # 追加
     return df
 
 # === UI ===
@@ -266,9 +279,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 Data Wrangling & Visualization UI")
-st.subheader(":one: Drag & drop log files (Available multiple and single)")
-
+st.title("📊 Data Wrangling & Visualization UI", help="This application allows you to upload, process, and visualize various log files. Use the drag-and-drop feature to upload files, select plotting modes, and customize your charts.")
+st.subheader(
+    ":one: Drag & drop log files (Available multiple or single)",
+    help="Upload your log files here. Supported formats include CSV, TXT, and Excel files. The application will automatically process the files and prepare them for visualization."
+)
 
 # === 1. File Upload UI ===
 file_labels = ["pTAT", "DTT", "THI", "FanCK", "logger"]
@@ -278,7 +293,30 @@ uploaded_data = {}
 # 첫 번째 줄 (기본 파일들)
 for i, label in enumerate(file_labels):
     with cols[i]:
-        st.markdown(f"<h5 style='text-align:left; margin-bottom: 0rem;'>📁 {label}</h5>", unsafe_allow_html=True)
+        if label == "pTAT":
+            st.markdown(
+                f"<h5 style='text-align:left; margin-bottom: 0rem;'>📁 {label}</h5>",
+                help="pTAT: convert Time column from hh:mm:ss:msec → hh:mm:ss",
+                unsafe_allow_html=True,
+                
+            )
+        elif label == "DTT":
+            st.markdown(
+                f"<h5 style='text-align:left; margin-bottom: 0rem;'>📁 {label}</h5>",
+                unsafe_allow_html=True,
+                help="DTT: new creation Watts column from all (mW)"
+            )
+        elif label == "THI":
+            st.markdown(
+                f"<h5 style='text-align:left; margin-bottom: 0rem;'>📁 {label}</h5>",
+                unsafe_allow_html=True,
+                help="THI: new creation to 1 sec period"
+            )
+        else:
+            st.markdown(
+                f"<h5 style='text-align:left; margin-bottom: 0rem;'>📁 {label}</h5>",
+                unsafe_allow_html=True
+            )
         uploaded_files = st.file_uploader(
             label=" ",  # 빈 문자열로 label 경고 피하기
             accept_multiple_files=True,
@@ -415,7 +453,6 @@ if st.button("🚀 Run Conversion"):
 
 # === 3. Conversion Output & Plotly Graph Settings ===
 if st.session_state.run_conversion:
-
     if plot_mode == "Merged":
         valid_uploaded = {label: dfs[0] for label, dfs in uploaded_data.items() if dfs}
 
@@ -516,14 +553,13 @@ if st.session_state.run_conversion:
         with st.expander("1st X＆Y-axis", expanded=True):
             # Select X-axis column
             if not available_columns:
-                st.warning("⚠️ データをアップロードし、Run Conversionを押してください。")
+                st.warning("⚠️ Press Run conversion")
             else:
                 st.session_state.x_axis = st.selectbox(
                     "Select X-axis column (Skin temp)",
                     options=available_columns,
                     index=available_columns.index(st.session_state.x_axis) if st.session_state.x_axis in available_columns else 0
                 )
-
             # Add Y-axis column (5×2配置)
             y_axis_cols_row1 = st.columns(len(file_labels))  # 1行目: 各アップローダー
             y_axis_cols_row2 = st.columns(5)  # 2行目: Wistron Tool + GPU mon + 空白3つ
@@ -535,7 +571,6 @@ if st.session_state.run_conversion:
             # 1行目: 各アップローダーに対応するselectboxを生成
             for i, label in enumerate(file_labels):
                 with y_axis_cols_row1[i]:
-                    selected_column_key = f"y_axis_{label}"
                     if label in uploaded_data and uploaded_data[label]:  # アップロードされたデータがある場合
                         available_options = [
                             col for col in uploaded_data[label][0].columns
@@ -544,16 +579,16 @@ if st.session_state.run_conversion:
                         selected_column = st.selectbox(
                             f"Add Y-axis column ({label})",
                             options=[""] + available_options,  # 空の選択肢を追加
-                            key=selected_column_key
+                            key=f"y_axis_{label}"
                         )
                         if selected_column and selected_column not in st.session_state.selected_columns:
                             st.session_state.selected_columns.append(selected_column)  # 即座に追加
-                            st.session_state[selected_column_key] = ""
+                            # st.session_state[f"y_axis_{label}"] = ""  ← この行を削除
                     else:  # アップロードされていない場合
                         st.selectbox(
                             f"Add Y-axis column ({label})",
                             options=[],
-                            key=selected_column_key,
+                            key=f"y_axis_{label}",
                             disabled=True
                         )
 
@@ -580,7 +615,7 @@ if st.session_state.run_conversion:
                     st.selectbox(
                         f"Add Y-axis column ({wistron_tool_label})",
                         options=[],
-                        key=selected_column_key,
+                        key=f"y_axis_{wistron_tool_label}",
                         disabled=True
                     )
 
@@ -603,7 +638,7 @@ if st.session_state.run_conversion:
                     st.selectbox(
                         f"Add Y-axis column ({gpu_mon_label})",
                         options=[],
-                        key=selected_column_key,
+                        key=f"y_axis_{gpu_mon_label}",
                         disabled=True
                     )
 
@@ -632,21 +667,22 @@ if st.session_state.run_conversion:
             # 1行目: 各アップローダーに対応するselectboxを生成
             for i, label in enumerate(file_labels):
                 with y_axis_cols_row1[i]:
-                    selected_column_key = f"secondary_y_axis_selectbox_{label}"
                     if label in uploaded_data and uploaded_data[label]:  # アップロードされたデータがある場合
                         available_options = [
                             col for col in uploaded_data[label][0].columns
                             if col not in st.session_state.secondary_selected_columns
                         ]  # すでに選択された列を除外
+
+                        # 動的にキーを生成
+                        dynamic_key = f"secondary_y_axis_selectbox_{label}_{len(st.session_state.secondary_selected_columns)}"
+
                         selected_column = st.selectbox(
                             f"Add 2nd Y-axis column ({label})",
-                            options=[""] + available_options,
-                            key=selected_column_key
+                            options=[""] + available_options,  # 空の選択肢を追加
+                            key=dynamic_key
                         )
                         if selected_column and selected_column not in st.session_state.secondary_selected_columns:
-                            st.session_state.secondary_selected_columns.append(selected_column)
-                            st.session_state[selected_column_key] = ""  # 選択を即クリア
-
+                            st.session_state.secondary_selected_columns.append(selected_column)  # 即座に追加
                     else:
                         st.selectbox(
                             f"Add 2nd Y-axis column ({label})",
@@ -784,9 +820,8 @@ if st.session_state.run_conversion:
             with x_y_title_cols[1]:
                 y_axis_title = st.text_input("Y-axis title", value="Y-axis", key="y_axis_title")
             with x_y_title_cols[2]:
-                second_y_axis_title = st.text_input("2nd Y-axis title", value="Secondary Y-axis", key="second_y_axis_title")
-
-    # Plotly描画部分
+                second_y_axis_title = st.text_input("2nd Y-axis title", value="2nd Y-axis", key="second_y_axis_title")
+        
 plot_df = None  # 初期値としてNoneを設定
 if st.session_state.run_conversion:
     # Run Conversionが押された後にplot_dfを設定
@@ -806,162 +841,172 @@ if plot_df is not None and x_col:
     selected_columns = [x_col] + y_cols + st.session_state.get("secondary_selected_columns", [])
     export_df = plot_df[selected_columns].copy()
 
-    # データをExcelファイルに保存
-    def convert_df_to_excel_with_chart(df):
-        # Excel用にlineとmarkerの構成を返す関数
-        def get_excel_line_marker_config(shape, color):
-            if shape == "lines":
-                return {
-                    "line": {"color": color},
-                    "marker": {"type": "none"}  # 明示的にマーカー無しを指定
+    # --- ここで系列が1本もない場合をチェック ---
+    if len(y_cols) + len(st.session_state.get("secondary_selected_columns", [])) == 0:
+        st.warning("Add column at least one")
+        excel_data = None  # 追加: エクセルデータもNoneに
+    else:
+        # データをExcelファイルに保存
+        def convert_df_to_excel_with_chart(df):
+            # Excel用にlineとmarkerの構成を返す関数
+            def get_excel_line_marker_config(shape, color):
+                if shape == "lines":
+                    return {
+                        "line": {"color": color},
+                        "marker": {"type": "none"}  # 明示的にマーカー無しを指定
+                    }
+                elif shape == "markers":
+                    return {
+                        "line": {"none": True},
+                        "marker": {"type": "circle", "size": 5, "border": {"none": True}, "fill": {"color": color}}
+                    }
+                elif shape == "lines+markers":
+                    return {
+                        "line": {"color": color},
+                        "marker": {"type": "circle", "size": 5, "border": {"none": True}, "fill": {"color": color}}
+                    }
+                else:
+                    return {
+                        "line": {"color": color},
+                        "marker": {"type": "none"}  # fallback
+                    }
+
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                # データを書き込む
+                df.to_excel(writer, index=False, sheet_name="Plot Data")
+
+                # ワークブックとワークシートを取得
+                workbook = writer.book
+                worksheet = writer.sheets["Plot Data"]
+
+                # 各列の幅を77ピクセルに設定
+                worksheet.set_column(0, len(df.columns) - 1, 77 / 7)  # 1文字幅は約7ピクセル
+
+                # グラフを作成
+                chart = workbook.add_chart({"type": "scatter", "subtype": "straight_with_markers"})
+
+                # マーカータイプのマッピング
+                marker_mapping = {
+                    "lines": None,
+                    "markers": "circle",
+                    "lines+markers": "circle"
                 }
-            elif shape == "markers":
-                return {
-                    "line": {"none": True},
-                    "marker": {"type": "circle", "size": 5, "border": {"none": True}, "fill": {"color": color}}
-                }
-            elif shape == "lines+markers":
-                return {
-                    "line": {"color": color},
-                    "marker": {"type": "circle", "size": 5, "border": {"none": True}, "fill": {"color": color}}
-                }
-            else:
-                return {
-                    "line": {"color": color},
-                    "marker": {"type": "none"}  # fallback
-                }
 
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            # データを書き込む
-            df.to_excel(writer, index=False, sheet_name="Plot Data")
+                # 第一軸のデータを追加
+                for i, y in enumerate(y_cols):
+                    if y in df.columns:
+                        color = color_map_ui[y]
+                        config = get_excel_line_marker_config(selected_y1_shape, color)
+                        chart.add_series({
+                            "name": y,
+                            "categories": ["Plot Data", 1, 0, len(df), 0],
+                            "values": ["Plot Data", 1, i + 1, len(df), i + 1],
+                            "line": config["line"],
+                            "marker": config["marker"]
+                        })
 
-            # ワークブックとワークシートを取得
-            workbook = writer.book
-            worksheet = writer.sheets["Plot Data"]
-
-            # 各列の幅を77ピクセルに設定
-            worksheet.set_column(0, len(df.columns) - 1, 77 / 7)  # 1文字幅は約7ピクセル
-
-            # グラフを作成
-            chart = workbook.add_chart({"type": "scatter", "subtype": "straight_with_markers"})
-
-            # マーカータイプのマッピング
-            marker_mapping = {
-                "lines": None,
-                "markers": "circle",
-                "lines+markers": "circle"
-            }
-
-            # 第一軸のデータを追加
-            for i, y in enumerate(y_cols):
-                if y in df.columns:
-                    color = color_map_ui[y]
-                    config = get_excel_line_marker_config(selected_y1_shape, color)
-                    chart.add_series({
-                        "name": y,
-                        "categories": ["Plot Data", 1, 0, len(df), 0],
-                        "values": ["Plot Data", 1, i + 1, len(df), i + 1],
-                        "line": config["line"],
-                        "marker": config["marker"]
-                    })
-
-            # 第二軸のデータを追加
-            secondary_y_cols = st.session_state.get("secondary_selected_columns", [])
-            for i, y in enumerate(secondary_y_cols):
-                if y in df.columns:
-                    color = color_map_ui[y]
-                    config = get_excel_line_marker_config(selected_y2_shape, color)
-                    chart.add_series({
-                        "name": y,
-                        "categories": ["Plot Data", 1, 0, len(df), 0],
-                        "values": ["Plot Data", 1, len(y_cols) + i + 1, len(df), len(y_cols) + i + 1],
-                        "line": config["line"],
-                        "marker": config["marker"],
-                        "y2_axis": True
-                    })
+                # 第二軸のデータを追加
+                secondary_y_cols = st.session_state.get("secondary_selected_columns", [])
+                for i, y in enumerate(secondary_y_cols):
+                    if y in df.columns:
+                        color = color_map_ui[y]
+                        config = get_excel_line_marker_config(selected_y2_shape, color)
+                        chart.add_series({
+                            "name": y,
+                            "categories": ["Plot Data", 1, 0, len(df), 0],
+                            "values": ["Plot Data", 1, len(y_cols) + i + 1, len(df), len(y_cols) + i + 1],
+                            "line": config["line"],
+                            "marker": config["marker"],
+                            "y2_axis": True
+                        })
 
 
-            # グラフのレイアウトを設定
-            chart.set_title({"name": "Plot Data Chart"})
-            chart.set_x_axis({"name": x_axis_title})
-            chart.set_y_axis({"name": y_axis_title})
-            chart.set_y2_axis({"name": second_y_axis_title})
+                # グラフのレイアウトを設定
+                chart.set_title({"name": "Plot Data Chart"})
+                chart.set_x_axis({"name": x_axis_title})
+                chart.set_y_axis({"name": y_axis_title})
+                chart.set_y2_axis({"name": second_y_axis_title})
 
-            # グラフをワークシートに挿入
-            worksheet.insert_chart("B6", chart, {"x_scale": 1.8, "y_scale": 1.8})
+                # グラフをワークシートに挿入
+                worksheet.insert_chart("B6", chart, {"x_scale": 1.8, "y_scale": 1.8})
+            return output.getvalue() 
 
-        return output.getvalue()
+        excel_data = convert_df_to_excel_with_chart(export_df)
 
-    excel_data = convert_df_to_excel_with_chart(export_df)
+    # ダウンロードボタンはexcel_dataがNoneでない場合のみ表示
+    if excel_data is not None:
+        st.download_button(
+            label="📥 To XLSX Output (with Charts)",
+            data=excel_data,
+            file_name="plot_data_with_chart.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
-    # ダウンロードボタン
-    st.download_button(
-        label="📥 To XLSX Output (with Charts)",  # ボタンのラベルを設定
-        data=excel_data,
-        file_name="plot_data_with_chart.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-    # Plotlyグラフの描画
-    fig = go.Figure()
+    # Plotlyグラフの描画も系列が1本以上ある場合のみ
+    if len(y_cols) + len(st.session_state.get("secondary_selected_columns", [])) > 0:
+        # Plotlyグラフの描画
+        fig = go.Figure()
 
-    # 第一軸の描画
-    for i, y in enumerate(y_cols):
-        if y in plot_df.columns:
-            color = mcolors.to_hex(cmap(i / max(len(plot_cols) - 1, 1)))  # 選択したカラーマップを使用
-            mode = selected_y1_shape  # 1st Y-axis shape の選択内容を反映
-            fig.add_trace(go.Scatter(
-                x=plot_df[x_col],
-                y=plot_df[y],
-                mode=mode,  # 選択した形状を適用
-                name=y,
-                line=dict(color=color),  # カラーマップの色を適用
-                yaxis="y"
-            ))
+        # 第一軸の描画
+        for i, y in enumerate(y_cols):
+            if y in plot_df.columns:
+                color = mcolors.to_hex(cmap(i / max(len(plot_cols) - 1, 1)))  # 選択したカラーマップを使用
+                mode = selected_y1_shape  # 1st Y-axis shape の選択内容を反映
+                fig.add_trace(go.Scatter(
+                    x=plot_df[x_col],
+                    y=plot_df[y],
+                    mode=mode,  # 選択した形状を適用
+                    name=y,
+                    line=dict(color=color),  # カラーマップの色を適用
+                    yaxis="y"
+                ))
 
-    # 第二軸の描画
-    for i, y in enumerate(secondary_y_cols):
-        if y in plot_df.columns:
-            color = mcolors.to_hex(cmap((i + len(y_cols)) / max(len(plot_cols) - 1, 1)))  # 選択したカラーマップを使用
-            mode = selected_y2_shape  # 2nd Y-axis shape の選択内容を反映
-            fig.add_trace(go.Scatter(
-                x=plot_df[x_col],
-                y=plot_df[y],
-                mode=mode,  # 選択した形状を適用
-                name=y,
-                marker=dict(color=color),  # カラーマップの色を適用
-                yaxis="y2"
-            ))
+        # 第二軸の描画
+        for i, y in enumerate(secondary_y_cols):
+            if y in plot_df.columns:
+                color = mcolors.to_hex(cmap((i + len(y_cols)) / max(len(plot_cols) - 1, 1)))  # 選択したカラーマップを使用
+                mode = selected_y2_shape  # 2nd Y-axis shape の選択内容を反映
+                fig.add_trace(go.Scatter(
+                    x=plot_df[x_col],
+                    y=plot_df[y],
+                    mode=mode,  # 選択した形状を適用
+                    name=y,
+                    marker=dict(color=color),  # カラーマップの色を適用
+                    yaxis="y2"
+                ))
 
-    # レイアウト設定
-    fig.update_layout(
-        xaxis=dict(
-            title=dict(
-                text=x_axis_title,
-                font=dict(size=18)  # X軸タイトルのフォントサイズを設定
+        # レイアウト設定
+        fig.update_layout(
+            xaxis=dict(
+                title=dict(
+                    text=x_axis_title,
+                    font=dict(size=18)  # X軸タイトルのフォントサイズを設定
+                ),
+                tickfont=dict(size=16)  # X軸の値のフォントサイズを設定
             ),
-            tickfont=dict(size=16)  # X軸の値のフォントサイズを設定
-        ),
-        yaxis=dict(
-            title=dict(
-                text=y_axis_title,
-                font=dict(size=18)  # Y軸タイトルのフォントサイズを設定
+            yaxis=dict(
+                title=dict(
+                    text=y_axis_title,
+                    font=dict(size=18)  # Y軸タイトルのフォントサイズを設定
+                ),
+                tickfont=dict(size=16)  # Y軸の値のフォントサイズを設定
             ),
-            tickfont=dict(size=16)  # Y軸の値のフォントサイズを設定
-        ),
-        yaxis2=dict(
-            title=dict(
-                text=second_y_axis_title,
-                font=dict(size=18)  # 2nd Y軸タイトルのフォントサイズを設定
+            yaxis2=dict(
+                title=dict(
+                    text=second_y_axis_title,
+                    font=dict(size=18)  # 2nd Y軸タイトルのフォントサイズを設定
+                ),
+                tickfont=dict(size=16),  # 2nd Y軸の値のフォントサイズを設定
+                overlaying="y",
+                side="right",
+                showgrid=False
             ),
-            tickfont=dict(size=16),  # 2nd Y軸の値のフォントサイズを設定
-            overlaying="y",
-            side="right",
-            showgrid=False
-        ),
-        font=dict(size=16),  # 全体のフォントサイズを設定
-        height=700,
-        margin=dict(l=40, r=40, t=40, b=40),
-        showlegend=True
-    )
-    st.plotly_chart(fig, use_container_width=True)
+            font=dict(size=16),  # 全体のフォントサイズを設定
+            height=700,
+            margin=dict(l=40, r=40, t=40, b=40),
+            showlegend=True
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
